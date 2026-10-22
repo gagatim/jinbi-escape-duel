@@ -218,7 +218,7 @@ const ITEMS={
   food:{n:"糧食",ic:"🍞",d:"飢餓結算時自動支付"},
   waterfood:{n:"生存補給",ic:"🎒",d:"一張卡同時抵1水+1糧"},
   pill:{n:"藥片",ic:"💊",d:"結算時使用：回復2血"},
-  adrenaline:{n:"腎上腺素",ic:"💉",d:"結算時使用：本回合血量最低保留1血，避免死亡"},
+  adrenaline:{n:"腎上腺素",ic:"💉",d:"結算時血量歸零才能使用：保留1血，避免死亡（沒用到就留在背包）"},
   wine:{n:"酒",ic:"🍷",d:"結算時使用，擲骰：1丟光道具／2無事／3武力+1／4速度+1／5負重+1／6回2血"},
   gold:{n:"金條",ic:"🪙",d:"在可搜索的房間花1根多抽1張隨機卡（每回合1次）；遊戲結束時每根+1血"},
   knife:{n:"刀",ic:"🔪",w:2,d:"武力+2"},
@@ -265,7 +265,7 @@ function newPlayer(name,id){
 }
 function newGame(names){
   return {v:1,round:0,phase:"setup",players:names.map((n,i)=>newPlayer(n,i)),
-    opts:{},first:null,dice:null,stock:initialStock(),poison:[[],[]],discard:[],log:[],report:[],reveal:[null,null],revealRound:[0,0],result:null,rand:Math.random};
+    opts:{dice:true},first:null,dice:null,stock:initialStock(),poison:[[],[]],discard:[],log:[],report:[],reveal:[null,null],revealRound:[0,0],result:null,rand:Math.random};
 }
 // ---------- helpers ----------
 const opp=pi=>1-pi;
@@ -356,7 +356,7 @@ function apply(G,pi,a,x){
   }
   if(a==="rematch"){
     if(G.phase!=="end") fail("遊戲尚未結束");
-    const fresh=newGame(G.players.map(q=>q.name)); fresh.opts=G.opts||{};
+    const fresh=newGame(G.players.map(q=>q.name)); fresh.opts=G.opts||{dice:true};
     Object.keys(G).forEach(k=>delete G[k]); Object.assign(G,fresh);
     return;
   }
@@ -652,7 +652,7 @@ function settle(G){
   });
   // 6) 使用藥片／腎上腺素／酒（雙方各自決定）
   G.phase="items";
-  living.forEach(p=>{ p.t.itemsDone=!(has(p,"pill")||has(p,"adrenaline")||has(p,"wine")); });
+  living.forEach(p=>{ p.t.itemsDone=!(has(p,"pill")||has(p,"wine")||(has(p,"adrenaline")&&p.hp<=0)); });
   if(P.every(p=>p.t.itemsDone)) finishSettle(G);
 }
 function useItems(G,pi,x){
@@ -669,6 +669,7 @@ function finishSettle(G){
   P.forEach(p=>{
     const u=p.t.use; p.t.use=null;
     if(!u || !p.alive) return;
+    const adr=u.adrenaline && takeItem(p,"adrenaline");
     for(let i=0;i<u.pill;i++){ takeItem(p,"pill"); G.discard.push("pill"); p.hp=Math.min(MAXHP,p.hp+2); add("💊 "+p.name+" 服用藥片：+2（HP "+p.hp+"）"); }
     for(let i=0;i<u.wine;i++){
       if(!takeItem(p,"wine")) break;
@@ -682,10 +683,9 @@ function finishSettle(G){
       else { p.hp=Math.min(MAXHP,p.hp+2); m="生命+2（HP "+p.hp+"）"; }
       add("🍷 "+p.name+" 喝酒擲出 "+roll+"："+m);
     }
-    if(u.adrenaline && takeItem(p,"adrenaline")){
-      G.discard.push("adrenaline");
-      if(p.hp<1){ p.hp=1; add("💉 "+p.name+" 注射腎上腺素，撐住了最後一口氣（HP 1）"); }
-      else add("💉 "+p.name+" 注射腎上腺素（本回合不會死亡）");
+    if(adr){
+      if(p.hp<1){ G.discard.push("adrenaline"); p.hp=1; add("💉 "+p.name+" 注射腎上腺素，撐住了最後一口氣（HP 1）"); }
+      else { p.inv.push("adrenaline"); add("💉 血量已經大於0，腎上腺素沒有用到，留在背包",p.id); }
     }
   });
   deathCheck(G,add);
@@ -933,53 +933,89 @@ function makeTransport(kind,code,role,onData,onOpen,onClose){
     return t;
   }
   if(typeof Peer==="undefined"){ toast("無法載入 PeerJS（需要網路）"); return null; }
-  let conn=null;
-  const t={send:m=>{ if(conn&&conn.open) conn.send(m); },close:()=>{ try{peer.destroy();}catch(e){} }};
+  let conn=null, peer=null, closed=false;
+  const t={send:m=>{ if(conn&&conn.open) conn.send(m); },close:()=>{ closed=true; try{peer.destroy();}catch(e){} }};
   const wire=c=>{
     conn=c;
     c.on("open",onOpen);
     c.on("data",onData);
-    c.on("close",onClose);
+    c.on("close",()=>{ if(!closed) onClose(); });
     c.on("error",e=>toast("連線錯誤："+e));
   };
-  const peer=role==="host"?new Peer(PEER_PREFIX+code):new Peer();
-  peer.on("error",e=>{
-    if(e.type==="unavailable-id"){ toast("房間碼衝突，請重新建立"); }
-    else if(e.type==="peer-unavailable"){ toast("找不到這個房間碼"); }
-    else toast("連線錯誤："+e.type);
-    netStatus("連線失敗");
-  });
-  peer.on("disconnected",()=>{ try{peer.reconnect();}catch(e){} });
-  if(role==="host"){
-    peer.on("open",()=>netStatus("房間已建立，等待對手加入…"));
-    peer.on("connection",c=>{ if(conn&&conn.open){ c.close(); return; } wire(c); });
-  } else {
-    peer.on("open",()=>{ netStatus("連線中…"); wire(peer.connect(PEER_PREFIX+code,{reliable:true,serialization:"json"})); });
-  }
+  // 房主重新整理後，舊的房間碼可能還佔在配對伺服器上一陣子：自動重試
+  const create=(attempt)=>{
+    peer=role==="host"?new Peer(PEER_PREFIX+code):new Peer();
+    peer.on("error",e=>{
+      if(e.type==="unavailable-id" && attempt<10){ netStatus("房間碼還在釋放中，重試中…（"+(attempt+1)+"）"); try{peer.destroy();}catch(_){} setTimeout(()=>create(attempt+1),3000); return; }
+      if(e.type==="peer-unavailable"){ toast("找不到這個房間（房主可能還沒回來）"); showReconnect(); }
+      else toast("連線錯誤："+e.type);
+      netStatus("連線失敗");
+    });
+    peer.on("disconnected",()=>{ try{peer.reconnect();}catch(e){} });
+    if(role==="host"){
+      peer.on("open",()=>netStatus(G&&G.phase!=="setup"?"等待對手重新連線（房間碼 "+code+"）":"房間已建立，等待對手加入…"));
+      peer.on("connection",c=>{ if(conn&&conn.open){ c.close(); return; } wire(c); });
+    } else {
+      peer.on("open",()=>{ netStatus("連線中…"); wire(peer.connect(PEER_PREFIX+code,{reliable:true,serialization:"json"})); });
+    }
+  };
+  create(0);
   return t;
 }
-function hostGame(kind,name){
-  const code=randCode(); ME=0;
-  UI.code=code; UI.myName=name; UI.waiting=true; render();
-  NET=makeTransport(kind,code,"host",msg=>{
+// ---------- 存檔：房主／對戰 AI 的遊戲狀態存在瀏覽器，重新整理後可以接續 ----------
+const SAVE_KEY="jbts2p-save", GUEST_KEY="jbts2p-guest";
+function saveGame(){
+  if(!G || ME!==0) return;
+  try{ localStorage.setItem(SAVE_KEY,JSON.stringify({mode:UI.ai?"ai":UI.kind,code:UI.code,name:UI.myName,t:Date.now(),
+    G:JSON.parse(JSON.stringify(G,(k,v)=>k==="rand"?undefined:v))})); }catch(e){}
+}
+function loadSave(key){
+  try{ const sv=JSON.parse(localStorage.getItem(key)||"null"); if(sv && Date.now()-sv.t<12*3600*1000) return sv; }catch(e){}
+  return null;
+}
+function hostOnMsg(name){
+  return msg=>{
     if(msg.t==="hello"){
       if(!G) G=newGame([name,msg.name||"玩家2"]);
-      netStatus("已連線（房主）"); UI.waiting=false; broadcast(); return;
+      netStatus("已連線（房主，房間碼 "+UI.code+"）"); UI.waiting=false; broadcast(); return;
     }
     if(msg.t==="act") doAct(1,msg.a,msg.x);
-  },()=>{},()=>{ netStatus("對手已斷線"); toast("對手已斷線"); });
+  };
+}
+function hostLost(){ netStatus("對手已斷線，等待重新連線（房間碼 "+UI.code+"）"); toast("對手已斷線，對手可用同一組房間碼重新加入"); }
+function hostGame(kind,name){
+  const code=randCode(); ME=0;
+  UI.code=code; UI.kind=kind; UI.myName=name; UI.waiting=true; render();
+  NET=makeTransport(kind,code,"host",hostOnMsg(name),()=>{},hostLost);
+}
+function resumeSave(sv){
+  G=sv.G; G.rand=Math.random; ME=0; UI.myName=sv.name;
+  if(sv.mode==="ai"){ UI.ai=true; NET={send(){}}; netStatus("對戰 AI"); broadcast(); return; }
+  UI.code=sv.code; UI.kind=sv.mode; UI.waiting=false;
+  NET=makeTransport(sv.mode,sv.code,"host",hostOnMsg(sv.name),()=>{},hostLost);
+  netStatus("等待對手重新連線（房間碼 "+sv.code+"）");
+  broadcast(); // 同電腦分頁模式的對手還在聽，直接同步；網路模式則等對手重新加入
 }
 function joinGame(kind,code,name){
-  ME=1; UI.myName=name; UI.joining=true; render();
-  NET=makeTransport(kind,code.trim().toUpperCase(),"guest",msg=>{
-    if(msg.t==="state"){ G=msg.s; UI.joining=false; netStatus("已連線"); render(); }
+  code=code.trim().toUpperCase();
+  ME=1; UI.myName=name; UI.joining=!G; UI.guest={kind,code,name}; render();
+  try{ localStorage.setItem(GUEST_KEY,JSON.stringify({kind,code,name,t:Date.now()})); }catch(e){}
+  NET=makeTransport(kind,code,"guest",msg=>{
+    if(msg.t==="state"){ G=msg.s; UI.joining=false; netStatus("已連線（房間碼 "+code+"）"); render(); }
     if(msg.t==="err") toast(msg.e);
-  },()=>{ NET.send({t:"hello",name}); },()=>{ netStatus("房主已斷線"); toast("房主已斷線"); });
+  },()=>{ NET.send({t:"hello",name}); },()=>{ toast("房主已斷線"); showReconnect(); });
+}
+// 加入者：斷線後顯示「重新連線」按鈕
+function showReconnect(){
+  if(ME!==1 || !UI.guest) return;
+  const el=$("#netStat");
+  el.innerHTML='房主已斷線 <button class="btn small" id="reconn">重新連線</button>';
+  $("#reconn").onclick=()=>{ try{ NET&&NET.close(); }catch(e){} const g=UI.guest; joinGame(g.kind,g.code,g.name); };
 }
 // 單人對戰 AI：AI 當玩家2，在本機用同一套引擎行動
 function startAI(name){
-  ME=0; UI.ai=true; NET={send(){}};
-  G=newGame([name,"AI"]); G.opts.dice=true; netStatus("對戰 AI");
+  ME=0; UI.ai=true; UI.myName=name; NET={send(){}};
+  G=newGame([name,"AI"]); netStatus("對戰 AI");
   broadcast();
 }
 function scheduleAI(){
@@ -993,6 +1029,7 @@ function broadcast(){
   if(!G) return;
   const s=JSON.parse(JSON.stringify(G,(k,v)=>k==="rand"?undefined:v));
   NET&&NET.send({t:"state",s});
+  saveGame();
   render();
   scheduleAI();
 }
@@ -1030,6 +1067,7 @@ function lobbyHTML(){
         <option value="peer">網路連線（房間碼，兩台電腦都要能上網）</option>
         <option value="local">同電腦兩個分頁（測試用）</option></select></label>
     </div>
+    ${resumeHTML()}
     <div class="panel"><h3>單人對戰 AI</h3><div class="muted" style="font-size:13px">不用連線，直接和電腦對打。</div><button class="btn" id="aiGame">開始對戰 AI</button></div>
     <div class="panel"><h3>建立房間</h3><button class="btn" id="host">建立房間</button></div>
     <div class="panel"><h3>加入房間</h3>
@@ -1038,10 +1076,22 @@ function lobbyHTML(){
     <div class="panel rules">${rulesHTML()}</div>
   </div>`;
 }
+function resumeHTML(){
+  const sv=loadSave(SAVE_KEY), gs=loadSave(GUEST_KEY);
+  let h="";
+  if(sv && sv.G && sv.G.phase!=="end"){
+    const where=sv.mode==="ai"?"對戰 AI":"房主，房間碼 "+sv.code;
+    h+=`<div class="panel"><h3>繼續上一局</h3><div class="muted" style="font-size:13px">${esc(where)}・${sv.G.round?"第 "+sv.G.round+" 回合":"配點中"}・${esc(sv.G.players.map(p=>p.name).join(" vs "))}</div>
+      <div class="row" style="margin-top:8px"><button class="btn" id="resume">繼續</button><button class="btn ghost small" id="dropSave">捨棄</button></div></div>`;
+  }
+  if(gs) h+=`<div class="panel"><h3>重新加入房間</h3><div class="muted" style="font-size:13px">上次加入的房間碼 <b>${esc(gs.code)}</b>（房主要先回到遊戲）</div>
+      <div class="row" style="margin-top:8px"><button class="btn" id="rejoin">重新加入 ${esc(gs.code)}</button></div></div>`;
+  return h;
+}
 function rulesHTML(){
   return `<h3>規則摘要</h3>
   <div>・開局把 <b>10 點</b> 分給 力量／速度／負重；HP 10。兩人各在自己的大樓（2F～B7），各自秘密選 <b>1F／B1／B2</b> 出發，選到同一層開局就先打一場。房間物資兩棟<b>共用庫存</b>，剩多少<b>看不到</b>，要搜了才知道。</div>
-  <div>・速度最低 1 點。對戰 AI 時每回合<b>擲骰比大小</b>，大的先行動（同點重擲），後手要等先手結束回合才能使用房間。<br>・每回合：先<b>投毒</b>（選對方大樓一層）→ 用速度步數上下移動（<b>不能停在出發的樓層</b>）→ 停在一個房間使用功能 → 結束回合。</div>
+  <div>・速度最低 1 點。每回合<b>擲骰比大小</b>，大的先行動（同點重擲），後手要等先手結束回合才能使用房間。<br>・每回合：先<b>投毒</b>（選對方大樓一層）→ 用速度步數上下移動（<b>不能停在出發的樓層</b>）→ 停在一個房間使用功能 → 結束回合。</div>
   <div>・對手位置是隱藏的，只有<b>戰鬥</b>、暗影吸血、被火箭筒命中或死亡時才會知道對方在哪一層。</div>
   <div>・結算順序：<b>暗影</b>（死者與活人同樓層：活人-2、暗影+2，累積4復活）→ <b>戰鬥</b>（同樓層比武力，差值為傷害；持槍者無視對方武力直接造成全部武力傷害）→ 火箭筒 → <b>毒氣</b>（各自大樓，傷害 1/2/2/3/3/4）→ <b>飢餓</b>（第2回合起付1水1糧，每缺一項-1）→ 使用藥片／腎上腺素／酒 → 死亡判定。</div>
   <div>・共 <b>6 回合</b>，比最後血量（金條每根+1血，上限10），同血比武力；兩人都死比死亡時武力。</div>`;
@@ -1051,6 +1101,9 @@ function bindLobby(){
   const nm=()=>($("#nm").value.trim()||"玩家");
   $("#host").onclick=()=>hostGame($("#kind").value,nm());
   $("#aiGame").onclick=()=>startAI(nm());
+  const rs=$("#resume"); if(rs) rs.onclick=()=>resumeSave(loadSave(SAVE_KEY));
+  const ds=$("#dropSave"); if(ds) ds.onclick=()=>{ try{ localStorage.removeItem(SAVE_KEY); }catch(e){} render(); };
+  const rj=$("#rejoin"); if(rj) rj.onclick=()=>{ const g=loadSave(GUEST_KEY); joinGame(g.kind,g.code,g.name); };
   $("#join").onclick=()=>{ const c=$("#code").value.trim(); if(!c){ toast("請輸入房間碼"); return; } joinGame($("#kind").value,c,nm()); };
 }
 function setupHTML(){
@@ -1420,7 +1473,7 @@ function flashModal(fl){
 function itemsModal(){
   const me=G.players[ME];
   const np=count(me,"pill"), nw=count(me,"wine"), na=count(me,"adrenaline");
-  UI.use=UI.use&&UI.use.r===G.round?UI.use:{r:G.round,pill:0,wine:0,adrenaline:false};
+  UI.use=UI.use&&UI.use.r===G.round?UI.use:{r:G.round,pill:0,wine:0,adrenaline:me.hp<=0&&has(me,"adrenaline")}; // 血量歸零時預設勾選腎上腺素
   const U=UI.use;
   const est=Math.min(MAXHP,me.hp+U.pill*2);
   modal(`<h3>結算：使用道具</h3>
@@ -1428,7 +1481,8 @@ function itemsModal(){
     <div class="notice" style="margin:10px 0">你目前 HP <b>${me.hp}</b>${me.hp<=0?"　⚠️ 不處理就會死亡！":""}</div>
     ${np?`<div class="statrow"><b>💊藥片</b><button class="btn small ghost" data-u="pill" data-d="-1">−</button><span class="v">${U.pill}</span><button class="btn small ghost" data-u="pill" data-d="1">＋</button><span class="muted">有${np}，每顆+2血</span></div>`:""}
     ${nw?`<div class="statrow"><b>🍷酒</b><button class="btn small ghost" data-u="wine" data-d="-1">−</button><span class="v">${U.wine}</span><button class="btn small ghost" data-u="wine" data-d="1">＋</button><span class="muted">有${nw}，擲骰（1會丟光道具）</span></div>`:""}
-    ${na?`<label class="row" style="margin:6px 0"><input type="checkbox" id="uAd" ${U.adrenaline?"checked":""}> 💉 使用腎上腺素（本回合最低保留1血）</label>`:""}
+    ${na&&me.hp<=0?`<label class="row" style="margin:6px 0"><input type="checkbox" id="uAd" ${U.adrenaline?"checked":""}> 💉 使用腎上腺素（保留1血；吃藥後血量已大於0就不會用掉）</label>`:""}
+    ${na&&me.hp>0?`<div class="muted" style="font-size:12px;margin:6px 0">💉 腎上腺素只有血量歸零時才能用，現在不需要。</div>`:""}
     <div class="muted" style="font-size:13px">順序：藥片 → 酒 → 腎上腺素。用藥後預估 HP ${est}${U.adrenaline?"（腎上腺素保底1）":""}</div>
     <div class="row" style="margin-top:10px"><button class="btn" id="uOk">確認</button></div>`);
   document.querySelectorAll("[data-u]").forEach(b=>b.onclick=()=>{
