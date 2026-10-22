@@ -61,6 +61,13 @@ h3{margin:0 0 8px;font-size:16px}
 .room.click:hover{background:var(--ember);color:#1a0f08}
 .room.in{background:var(--me);color:#06141c;border-color:var(--me);font-weight:700}
 .room.locked{opacity:.45}
+.notes .nt{margin:8px 0 12px;font-size:13.5px;line-height:1.7}
+.notes .nt>b{color:var(--gold);font-size:14.5px}
+.notes ol,.notes ul{margin:4px 0;padding-left:22px}
+.ntab{border-collapse:collapse;margin-top:6px;font-size:13px}
+.ntab th,.ntab td{border:1px solid var(--line);padding:3px 10px;text-align:center}
+.ntab th{color:var(--muted);font-weight:600;text-align:left}
+.room.fog{background:repeating-linear-gradient(135deg,#2b2733 0 6px,#221f29 6px 12px);border-color:#5a5368;color:#8f88a0;text-decoration:line-through;cursor:not-allowed}
 .tok{font-size:12px;font-weight:800;border-radius:10px;padding:1px 7px;margin-left:auto}
 .tok.me{background:var(--me);color:#06141c}
 .tok.opp{background:var(--opp);color:#1a0f08}
@@ -211,7 +218,8 @@ const MAXHP=10, ROUNDS=6, STAT_POINTS=10;
 const FLOORS=["2F","1F","B1","B2","B3","B4","B5","B6","B7"];
 const POISON_DMG=[1,2,2,3,3,4]; // 第1~6回合毒氣傷害
 const AIRDROP=["knifeX2","wine","waterfood","pistol","adrenaline","pill"]; // 停機坪第1~6回合空投
-const START_FLOORS=[1,2,3]; // 開局可選 1F／B1／B2
+const START_FLOORS=[1,2]; // 開局可選 1F／B1
+const FOG_ROUNDS=3, FOG_COUNT=2; // 前3回合黑暗迷霧：每回合隨機封鎖 2F～B6 的2間房間（兩棟相同）
 const TELEPORT_FLOOR=5, WAREHOUSE_FLOOR=6, MORGUE_FLOOR=8;
 const ITEMS={
   water:{n:"水",ic:"💧",d:"飢餓結算時自動支付"},
@@ -265,7 +273,7 @@ function newPlayer(name,id){
 }
 function newGame(names){
   return {v:1,round:0,phase:"setup",players:names.map((n,i)=>newPlayer(n,i)),
-    opts:{dice:true},first:null,dice:null,stock:initialStock(),poison:[[],[]],discard:[],log:[],report:[],reveal:[null,null],revealRound:[0,0],result:null,rand:Math.random};
+    opts:{dice:true},first:null,dice:null,fog:[],stock:initialStock(),poison:[[],[]],discard:[],log:[],report:[],reveal:[null,null],revealRound:[0,0],result:null,rand:Math.random};
 }
 // ---------- helpers ----------
 const opp=pi=>1-pi;
@@ -323,6 +331,11 @@ function startRound(G){
     do{ a=1+Math.floor(G.rand()*6); b=1+Math.floor(G.rand()*6); rolls.push([a,b]); }while(a===b);
     G.first=a>b?0:1; G.dice=rolls;
   }
+  G.fog=[];
+  if(G.round<=FOG_ROUNDS){
+    const pool=Object.keys(ROOMS).filter(id=>ROOMS[id].f<=7);
+    shuffle(pool,G.rand); G.fog=pool.slice(0,FOG_COUNT);
+  }
   log(G,"── 第 "+G.round+" 回合開始 ── 停機坪空投："+ITEMS[drop].ic+ITEMS[drop].n+"；本回合毒氣傷害 "+POISON_DMG[G.round-1]);
   G.players.forEach(p=>{
     p.t={poison:null,steps:p.alive?moveSpeed(p):p.ghostSpeed,committed:false,roomUsed:false,pending:null,
@@ -331,6 +344,7 @@ function startRound(G){
     // 行動階段對手看到的血量／素質：回合開始時的快照（避免從即時變化推測位置，例如基因庫扣血）
     p.pub={hp:p.hp,power:p.power,speed:p.speed,carry:p.carry,alive:p.alive,drain:p.drain};
   });
+  if(G.fog.length) log(G,"☁ 黑暗迷霧籠罩："+G.fog.map(id=>fl(ROOMS[id].f)+" "+ROOMS[id].n).join("、")+"，本回合無法進入");
   if(G.dice) log(G,"🎲 擲骰比大小："+G.dice.map(([a,b])=>G.players[0].name+" "+a+" vs "+G.players[1].name+" "+b).join("（同點重擲）→ ")+"，"+G.players[G.first].name+" 先行動");
 }
 // 後手在先手結束回合前不能搜索房間／用金條
@@ -347,7 +361,7 @@ function apply(G,pi,a,x){
     if(v[0]+v[1]+v[2]!==STAT_POINTS) fail("必須剛好分配 "+STAT_POINTS+" 點");
     if(v[1]<1) fail("速度最低 1 點");
     const sf=x.floor|0;
-    if(!START_FLOORS.includes(sf)) fail("起始樓層只能選 1F、B1、B2");
+    if(!START_FLOORS.includes(sf)) fail("起始樓層只能選 1F、B1");
     [p.power,p.speed,p.carry]=v; p.floor=sf; p.ready=true;
     if(x.name) p.name=String(x.name).slice(0,12);
     log(G,p.name+" 完成配點與起始位置選擇。");
@@ -394,6 +408,7 @@ function apply(G,pi,a,x){
       if(t.committed) fail("已經停留在房間");
       if(p.floor!==TELEPORT_FLOOR) fail("要在 B4 傳送室才能傳送");
       if(p.tpLeft<1) fail("本場傳送次數已用完");
+      if((G.fog||[]).includes("teleport")) fail("傳送室被黑暗迷霧籠罩，本回合無法傳送");
       if(t.steps<2) fail("傳送需要2步");
       const f=x.floor|0;
       if(f<0||f>8||f===p.floor) fail("目的樓層不正確");
@@ -410,6 +425,7 @@ function apply(G,pi,a,x){
         const R=ROOMS[x.room];
         if(!R || R.f!==p.floor) fail("這個房間不在你所在的樓層");
         if(R.needTP && !t.wh) fail("大倉庫只有從 B4 傳送過來才能進入");
+        if((G.fog||[]).includes(x.room)) fail("「"+R.n+"」被黑暗迷霧籠罩，本回合無法進入");
         if(t.mustMove && p.floor===t.startFloor) fail("每回合不能停留在出發的樓層，請先移動");
         p.room=x.room;
       } else p.room=null;
@@ -822,9 +838,10 @@ function aiPlan(G,pi){
     if(t.mustMove && f===t.startFloor) continue;
     const fs=floorScore(f)+travel(f);
     opts.push({floor:f,room:null,score:fs});
-    Object.keys(ROOMS).forEach(id=>{ const R=ROOMS[id]; if(R.f!==f||R.needTP) return; opts.push({floor:f,room:id,score:fs+aiRoomValue(G,p,id)}); });
+    Object.keys(ROOMS).forEach(id=>{ const R=ROOMS[id]; if(R.f!==f||R.needTP||(G.fog||[]).includes(id)) return; opts.push({floor:f,room:id,score:fs+aiRoomValue(G,p,id)}); });
   }
-  if(p.tpLeft>0 && Math.abs(p.floor-TELEPORT_FLOOR)+2<=steps && !(t.mustMove && t.startFloor===WAREHOUSE_FLOOR))
+  const fogged=G.fog||[];
+  if(p.tpLeft>0 && Math.abs(p.floor-TELEPORT_FLOOR)+2<=steps && !(t.mustMove && t.startFloor===WAREHOUSE_FLOOR) && !fogged.includes("teleport") && !fogged.includes("warehouse"))
     opts.push({floor:WAREHOUSE_FLOOR,room:"warehouse",tp:true,score:floorScore(WAREHOUSE_FLOOR)+aiRoomValue(G,p,"warehouse")*1.2});
   opts.forEach(o=>{ o.score+=G.rand()*1.2; });
   opts.sort((a,b)=>b.score-a.score);
@@ -856,7 +873,7 @@ function aiStep(G,pi){
   if(G.phase==="setup"){
     if(p.ready) return false;
     const pre=[[4,3,3],[3,3,4],[4,2,4],[3,4,3],[5,2,3]][Math.floor(G.rand()*5)];
-    return A("setup",{power:pre[0],speed:Math.max(1,pre[1]),carry:pre[2]-(pre[1]<1?1:0),floor:START_FLOORS[Math.floor(G.rand()*3)]});
+    return A("setup",{power:pre[0],speed:Math.max(1,pre[1]),carry:pre[2]-(pre[1]<1?1:0),floor:START_FLOORS[Math.floor(G.rand()*START_FLOORS.length)]});
   }
   if(G.phase==="report"){ return p.ready?false:A("ready"); }
   if(G.phase==="items"){
@@ -1074,6 +1091,7 @@ function lobbyHTML(){
       <div class="row"><input id="code" maxlength="5" placeholder="房間碼" style="text-transform:uppercase;width:140px">
       <button class="btn" id="join">加入</button></div></div>
     <div class="panel rules">${rulesHTML()}</div>
+    ${notesHTML()}
   </div>`;
 }
 function resumeHTML(){
@@ -1090,7 +1108,8 @@ function resumeHTML(){
 }
 function rulesHTML(){
   return `<h3>規則摘要</h3>
-  <div>・開局把 <b>10 點</b> 分給 力量／速度／負重；HP 10。兩人各在自己的大樓（2F～B7），各自秘密選 <b>1F／B1／B2</b> 出發，選到同一層開局就先打一場。房間物資兩棟<b>共用庫存</b>，剩多少<b>看不到</b>，要搜了才知道。</div>
+  <div>・開局把 <b>10 點</b> 分給 力量／速度／負重；HP 10。兩人各在自己的大樓（2F～B7），各自秘密選 <b>1F／B1</b> 出發，選到同一層開局就先打一場。</div>
+  <div>・<b>黑暗迷霧</b>：前 3 回合，每回合隨機封鎖 2F～B6 的 2 間房間（兩棟相同，回合開始公開），被封住的房間不能進入；傳送室被封住時也不能傳送。房間物資兩棟<b>共用庫存</b>，剩多少<b>看不到</b>，要搜了才知道。</div>
   <div>・速度最低 1 點。每回合<b>擲骰比大小</b>，大的先行動（同點重擲），後手要等先手結束回合才能使用房間。<br>・每回合：先<b>投毒</b>（選對方大樓一層）→ 用速度步數上下移動（<b>不能停在出發的樓層</b>）→ 停在一個房間使用功能 → 結束回合。</div>
   <div>・對手位置是隱藏的，只有<b>戰鬥</b>、暗影吸血、被火箭筒命中或死亡時才會知道對方在哪一層。</div>
   <div>・結算順序：<b>暗影</b>（死者與活人同樓層：活人-2、暗影+2，累積4復活）→ <b>戰鬥</b>（同樓層比武力，差值為傷害；持槍者無視對方武力直接造成全部武力傷害）→ 火箭筒 → <b>毒氣</b>（各自大樓，傷害 1/2/2/3/3/4）→ <b>飢餓</b>（第2回合起付1水1糧，每缺一項-1）→ 使用藥片／腎上腺素／酒 → 死亡判定。</div>
@@ -1159,6 +1178,31 @@ function gameHTML(){
       <div class="panel"><h3>紀錄</h3><div class="log" id="log">${G.log.filter(l=>l.to===undefined||l.to===ME).slice(-120).map(l=>
         `<div class="${l.to!==undefined?"pv":""} ${/^── /.test(l.text)?"rd":""}">${esc(l.text)}</div>`).join("")}</div></div>
     </div>
+  </div>
+  ${notesHTML()}`;
+}
+// 遊戲畫面下方的「特別說明」
+function notesHTML(){
+  return `<div class="panel notes" style="margin-top:12px"><h3>📌 特別說明</h3>
+    <div class="nt"><b>大倉庫怎麼去</b>
+      <ol>
+        <li>先移動到 <b>B4</b>，停在 B4 時行動欄會出現「🌀 傳送（2步）」。</li>
+        <li>按下後選 <b>B5</b>：花 2 步傳送過去，B5 的「大倉庫」就會打開，點它進入、搜索（抽 3 張）。</li>
+        <li>一定要<b>從 B4 傳送到 B5</b> 才打得開；用走的到 B5 打不開，傳送後再移動門也會關上。</li>
+        <li>需要剩 <b>2 步</b>，一場最多傳送 <b>2 次</b>；傳送室或大倉庫被黑暗迷霧封住的回合不能去。這回合若是從 B5 出發，也不能再停回 B5。</li>
+        <li>大倉庫一開始有：水4、糧4、刀3、酒2、藥片2、腎上腺素2、手槍1、金條1、霰彈槍1（兩棟共用，剩多少看不到）。</li>
+      </ol></div>
+    <div class="nt"><b>防毒面具（已修正）</b>
+      <div>放在背包自動生效、不會消耗：毒氣傷害 <b>-2</b>（最低 0）。只擋毒氣，戰鬥、火箭筒、暗影、飢餓照扣。全場只有 1 個，在 B5 垃圾場。</div>
+      <table class="ntab"><tr><th>回合</th><td>1</td><td>2</td><td>3</td><td>4</td><td>5</td><td>6</td></tr>
+        <tr><th>毒氣傷害</th><td>1</td><td>2</td><td>2</td><td>3</td><td>3</td><td>4</td></tr>
+        <tr><th>戴防毒面具</th><td>0</td><td>0</td><td>0</td><td>1</td><td>1</td><td>2</td></tr></table></div>
+    <div class="nt"><b>黑暗迷霧</b>
+      <ul>
+        <li>前 <b>3</b> 回合，每回合開始隨機封鎖 <b>2 間</b>房間（2F～B6，B7 停屍間不會被封），第 4 回合起散去。</li>
+        <li>兩棟大樓封的房間相同，回合開始就公開：房間標籤變成紫灰斜紋、加刪除線，行動欄也會列出。</li>
+        <li>被封的房間本回合不能進入；<b>傳送室</b>被封時也不能傳送，<b>大倉庫</b>被封時傳送到 B5 也進不去。</li>
+      </ul></div>
   </div>`;
 }
 function buildingHTML(pi){
@@ -1177,8 +1221,10 @@ function buildingHTML(pi){
         else if(G.phase==="action" && me.alive && !t.ended && !t.committed && t.poison!==null && me.floor===f && (!R.needTP||t.wh) && !(t.mustMove&&f===t.startFloor)) cls+=" click";
         if(R.needTP && !(me.floor===f && t.wh)) cls+=" locked";
       }
+      const foggy=G.phase==="action" && (G.fog||[]).includes(id);
+      if(foggy) cls=cls.replace(" click","")+" fog";
       const left=null; // 庫存未知，不顯示數量
-      return `<span class="${cls}" data-room="${mine?id:""}" title="${esc(R.d)}">${R.n}${left!==null?` <span class="muted">${left}</span>`:""}</span>`;
+      return `<span class="${cls}" data-room="${mine?id:""}" title="${foggy?"黑暗迷霧：本回合無法進入":esc(R.d)}">${foggy?"☁":""}${R.n}${left!==null?` <span class="muted">${left}</span>`:""}</span>`;
     }).join("");
     const isP=poisoned.includes(f);
     let tok="";
@@ -1200,7 +1246,8 @@ function actionHTML(){
   if(G.phase==="report"||G.phase==="items")
     return `<div class="panel"><h3>結算中</h3><div class="muted">${G.phase==="items"?(t.itemsDone?"等待 "+esc(op.name)+" 決定是否使用道具…":"請決定是否使用道具"):(me.ready?"等待 "+esc(op.name)+"…":"查看結算報告")}</div></div>`;
   const DICE="⚀⚁⚂⚃⚄⚅";
-  const diceNote=G.dice?`<div class="notice" style="margin-bottom:8px">🎲 ${G.dice.map(([a,b])=>`${ME===0?"你":esc(G.players[0].name)} ${DICE[a-1]}${a} vs ${ME===1?"你":esc(G.players[1].name)} ${DICE[b-1]}${b}`).join("（同點重擲）→ ")}<br><b>${G.first===ME?"你先行動":esc(op.name)+" 先行動"}</b>${waitingFirst(G,ME)?"：等它結束回合後你才能搜索房間（投毒、移動可以先做）":""}</div>`:"";
+  const fogNote=(G.fog||[]).length?`<div class="notice" style="margin-bottom:8px;border-color:#5a5368;background:#221f29">☁ 黑暗迷霧（第 ${G.round}/${FOG_ROUNDS} 回合）：${G.fog.map(id=>fl(ROOMS[id].f)+" "+ROOMS[id].n).join("、")} 無法進入${G.fog.includes("teleport")?"，也不能傳送":""}</div>`:"";
+  const diceNote=fogNote+(G.dice?`<div class="notice" style="margin-bottom:8px">🎲 ${G.dice.map(([a,b])=>`${ME===0?"你":esc(G.players[0].name)} ${DICE[a-1]}${a} vs ${ME===1?"你":esc(G.players[1].name)} ${DICE[b-1]}${b}`).join("（同點重擲）→ ")}<br><b>${G.first===ME?"你先行動":esc(op.name)+" 先行動"}</b>${waitingFirst(G,ME)?"：等它結束回合後你才能搜索房間（投毒、移動可以先做）":""}</div>`:"");
   if(t.ended) return `<div class="panel">${diceNote}<h3>已結束回合</h3><div class="muted">等待 ${esc(op.name)} 行動…</div></div>`;
   let h=`<div class="panel">${diceNote}<h3>${me.alive?"行動":"暗影行動"}</h3>`;
   if(t.poison===null){
@@ -1213,7 +1260,7 @@ function actionHTML(){
   if(!t.committed){
     h+=`<div class="row" style="margin:8px 0"><button class="btn small" data-move="-1" ${t.steps<1||me.floor===0?"disabled":""}>▲ 上樓</button>
       <button class="btn small" data-move="1" ${t.steps<1||me.floor===8?"disabled":""}>▼ 下樓</button>
-      ${me.alive&&me.floor===TELEPORT_FLOOR?`<button class="btn small" id="tp" ${t.steps<2||me.tpLeft<1?"disabled":""}>🌀 傳送（2步）</button>`:""}</div>`;
+      ${me.alive&&me.floor===TELEPORT_FLOOR?`<button class="btn small" id="tp" ${t.steps<2||me.tpLeft<1||(G.fog||[]).includes("teleport")?"disabled":""}>🌀 ${(G.fog||[]).includes("teleport")?"傳送室被迷霧封住":"傳送（2步）"}</button>`:""}</div>`;
     if(me.alive) h+=`<div class="muted" style="font-size:13px">移動完後，點你所在樓層的房間進入（每回合一間）。</div>
       <div class="row" style="margin-top:8px"><button class="btn small ghost" id="stay" ${t.mustMove&&me.floor===t.startFloor?"disabled":""}>不進房間</button></div>`;
   } else if(me.room){
