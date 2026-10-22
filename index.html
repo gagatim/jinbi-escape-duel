@@ -281,7 +281,7 @@ const ITEMS={
 const ROOMS={
   gene:{n:"基因庫",f:0,type:"gene",d:"力量／速度／負重各永久+1，扣2血"},
   heli:{n:"停機坪",f:1,draw:99,d:"每回合空投：雙刀→酒→生存補給→手槍→腎上腺素→藥片（沒人拿會累積）"},
-  tower:{n:"水塔",f:1,draw:4,d:"抽4張水（共10個）"},
+  tower:{n:"水塔",f:1,draw:3,d:"一次最多抽3張水（共8個）"},
   control:{n:"控制室",f:2,type:"control",d:"解除自己大樓一層毒氣，或對方大樓多一層毒氣"},
   armory:{n:"武器庫",f:2,draw:2,d:"抽2張（5刀、2手槍、1霰彈槍）"},
   canteen:{n:"餐廳",f:3,type:"canteen",d:"本回合不用支付水糧"},
@@ -290,17 +290,17 @@ const ROOMS={
   pharmacy:{n:"藥房",f:4,draw:2,d:"抽2張（3藥片、3腎上腺素）"},
   teleport:{n:"傳送室",f:5,type:"teleport",d:"移動時花2步傳送到任意樓層（一場最多2次）；傳送到B5可開大倉庫"},
   dump:{n:"垃圾場",f:6,draw:5,keep:2,noGold:true,d:"翻5張，奇物（繩索、次元口袋、火箭筒、防毒面具、回收裝置）最多帶走2件；另有20個垃圾"},
-  granary:{n:"糧倉",f:6,draw:10,d:"抽10張糧食（共10個）"},
+  granary:{n:"糧倉",f:6,draw:3,d:"一次最多抽3張糧食（共8個）"},
   warehouse:{n:"大倉庫",f:6,draw:3,needTP:true,d:"須從B4傳送到B5才能進入；抽3張"},
   cellar:{n:"酒窖",f:7,draw:2,d:"抽2張酒（共6個）"},
   morgue:{n:"停屍間",f:8,draw:3,d:"死亡玩家的遺物在這裡；抽3張"}
 };
 function initialStock(){
   return {
-    heli:{}, tower:{water:10}, armory:{knife:5,pistol:2,shotgun:1}, vault:{gold:4},
+    heli:{}, tower:{water:8}, armory:{knife:5,pistol:2,shotgun:1}, vault:{gold:4},
     pharmacy:{pill:3,adrenaline:3},
     dump:{trash:20,rope:1,dimpocket:1,rocket:1,gasmask:1,recycle:1},
-    granary:{food:10}, cellar:{wine:6}, morgue:{},
+    granary:{food:8}, cellar:{wine:6}, morgue:{},
     warehouse:{water:4,food:4,knife:3,wine:2,pill:2,adrenaline:2,pistol:1,gold:1,shotgun:1}
   };
 }
@@ -1256,6 +1256,8 @@ function notesHTML(){
         <li>需要剩 <b>2 步</b>，一場最多傳送 <b>2 次</b>；B4 或 B5 被黑暗迷霧封住的回合不能去。這回合若是從 B5 出發，也不能再停回 B5。</li>
         <li>大倉庫一開始有：水4、糧4、刀3、酒2、藥片2、腎上腺素2、手槍1、金條1、霰彈槍1（兩棟共用，剩多少看不到）。</li>
       </ol></div>
+    <div class="nt"><b>水塔／糧倉（已修正）</b>
+      <div>1F 水塔：水共 <b>8</b> 個；B5 糧倉：糧食共 <b>8</b> 個。兩間都是<b>一次最多抽 3 張</b>（仍受負重限制）。兩棟大樓共用庫存，剩多少看不到。</div></div>
     <div class="nt"><b>防毒面具（已修正）</b>
       <div>放在背包自動生效、不會消耗：毒氣傷害 <b>-2</b>（最低 0）。只擋毒氣，戰鬥、火箭筒、暗影、飢餓照扣。全場只有 1 個，在 B5 垃圾場。</div>
       <table class="ntab"><tr><th>回合</th><td>1</td><td>2</td><td>3</td><td>4</td><td>5</td><td>6</td></tr>
