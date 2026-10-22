@@ -227,7 +227,7 @@ const ITEMS={
   shotgun:{n:"霰彈槍",ic:"💥",w:4,gun:true,d:"武力+4；持槍時無視對方武力，直接造成自己全部武力的傷害"},
   rope:{n:"繩索",ic:"🪢",sp:true,d:"移動速度+2"},
   dimpocket:{n:"次元口袋",ic:"👝",sp:true,d:"負重無上限"},
-  rocket:{n:"火箭筒",ic:"🚀",sp:true,d:"指定對方一個樓層，結算時對方在該樓層扣4血（一次性）"},
+  rocket:{n:"火箭筒",ic:"🚀",sp:true,d:"每回合可發射1次：指定對方一個樓層，結算時對方在該樓層扣4血（永久持有，不會消耗）"},
   gasmask:{n:"防毒面具",ic:"😷",sp:true,d:"毒氣傷害-2（最低0），不會消耗"},
   recycle:{n:"回收裝置",ic:"♻️",sp:true,d:"從棄牌堆隨機拿回1張用過的道具（每回合1次）"},
   trash:{n:"垃圾",ic:"🗑️",d:"沒有用途"}
@@ -438,8 +438,9 @@ function apply(G,pi,a,x){
       if(!p.alive) fail("暗影不能使用道具");
       const f=x.floor|0;
       if(f<0||f>8) fail("樓層不正確");
-      if(!takeItem(p,"rocket")) fail("你沒有火箭筒");
-      G.discard.push("rocket"); t.rockets.push(f);
+      if(!has(p,"rocket")) fail("你沒有火箭筒");
+      if(t.rockets.length) fail("火箭筒每回合只能發射1次");
+      t.rockets.push(f); // 永久持有：發射後火箭筒留在背包
       log(G,"你用火箭筒瞄準 "+G.players[opp(pi)].name+" 大樓的 "+fl(f)+"（結算時命中扣4血）。",pi);
       return;
     }
@@ -705,7 +706,7 @@ function endGame(G){
   log(G,"🏁 遊戲結束："+(w<0?"平手！":P[w].name+" 獲勝！")+"（"+G.result.why+"）");
 }
 // ===================== AI（只用公開資訊：對手上回合結算位置、血量、基礎素質、毒層、房間庫存）=====================
-const AI_VAL={knifeX2:9,shotgun:9,pistol:8,waterfood:7,gasmask:7,dimpocket:6,pill:6,adrenaline:6,knife:5,rocket:5,rope:4,recycle:3,gold:3,wine:2,water:5,food:5,trash:-1};
+const AI_VAL={knifeX2:9,shotgun:9,pistol:8,waterfood:7,gasmask:7,dimpocket:6,pill:6,adrenaline:6,knife:5,rocket:8,rope:4,recycle:3,gold:3,wine:2,water:5,food:5,trash:-1};
 const AI_NEED=["water","food","pill","adrenaline","pistol","shotgun","knifeX2","knife"];
 function aiHungerLeft(G){ return Math.max(0,ROUNDS-Math.max(G.round,2)+1); }
 function aiItemValue(G,p,it,extra){
@@ -718,7 +719,7 @@ function aiItemValue(G,p,it,extra){
   if(it==="waterfood") return c("water")+c("waterfood")>=aiHungerLeft(G)&&c("food")+c("waterfood")>=aiHungerLeft(G)?0.5:8;
   if(ITEMS[it].gun && (hasGun(p)||extra.some(x=>ITEMS[x].gun))) return ITEMS[it].w; // 第二把槍只剩武力加成
   if((it==="pill"||it==="adrenaline") && c(it)>=2) return 2;
-  if((it==="gasmask"||it==="dimpocket"||it==="rope"||it==="recycle") && c(it)>=1) return 0;
+  if((it==="gasmask"||it==="dimpocket"||it==="rope"||it==="recycle"||it==="rocket") && c(it)>=1) return 0;
   return AI_VAL[it];
 }
 function aiRoomValue(G,p,id){
@@ -1158,7 +1159,7 @@ function itemButtonsHTML(){
   const me=G.players[ME], t=me.t;
   if(G.phase!=="action"||t.ended||!me.alive||t.poison===null) return "";
   let b="";
-  if(has(me,"rocket")) b+=`<button class="btn small ghost" id="rocket">🚀 發射火箭筒</button>`;
+  if(has(me,"rocket")) b+=`<button class="btn small ghost" id="rocket" ${t.rockets.length?"disabled":""}>🚀 ${t.rockets.length?"本回合已發射（"+fl(t.rockets[0])+"）":"發射火箭筒"}</button>`;
   if(has(me,"recycle")) b+=`<button class="btn small ghost" id="recycle" ${t.recycled||!G.discard.length?"disabled":""}>♻️ 回收（棄牌堆 ${G.discard.length}）</button>`;
   return b?`<div class="row" style="margin-top:8px">${b}</div>`:"";
 }
