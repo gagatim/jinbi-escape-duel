@@ -382,6 +382,8 @@ input,select{background:rgba(255,255,255,.8);color:var(--text);border:1px solid 
 .notice.fognote{background:rgba(40,32,26,.08);border-color:rgba(40,32,26,.22);border-top-color:rgba(255,255,255,.8);color:#3b2a1d}
 .floor.pickp{border-color:rgba(60,160,90,.30)}
 .floor.pickp:hover{background:rgba(95,190,120,.18);border-color:rgba(60,160,90,.7)}
+.homeBtn{right:62px;font-size:13.5px;font-weight:700;color:var(--text)}
+.homeBtn:hover{border-color:rgba(224,112,58,.5);background:#fff}
 /* 抽卡的卡牌維持深色（像實體遊戲卡），在淺色背景上更醒目 */
 .flipCard{--panel:#1f1a17;--panel2:#2a231f;--line:#3d332c;--text:#eee3d6;--ink:#eee3d6;--muted:#a8998a;--cyan:#7fe3f5;color:#eee3d6}
 .flipCard .flipFace{box-shadow:0 8px 20px rgba(80,50,20,.25)}
@@ -413,6 +415,7 @@ input,select{background:rgba(255,255,255,.8);color:var(--text);border:1px solid 
 </div>
 <div id="modalRoot"></div>
 <button class="sndBtn" id="sndBtn" title="音效開關">🔊</button>
+<button class="sndBtn homeBtn hidden" id="homeBtn" title="回到首頁（遊戲會保留）">🏠 首頁</button>
 <div class="credit">小葉設計　未經允許　請勿使用</div>
 
 <script src="https://cdn.jsdelivr.net/npm/peerjs@1.5.4/dist/peerjs.min.js"></script>
@@ -1310,6 +1313,15 @@ function showReconnect(){
   el.innerHTML='房主已斷線 <button class="btn small" id="reconn">重新連線</button>';
   $("#reconn").onclick=()=>{ try{ NET&&NET.close(); }catch(e){} const g=UI.guest; joinGame(g.kind,g.code,g.name); };
 }
+// 回到首頁：斷開連線、停掉 AI；房主／對戰 AI 的進度已經存檔，可以在首頁「繼續上一局」接回
+function goHome(){
+  clearTimeout(UI.aiTimer); clearFlipTimers();
+  try{ NET && NET.close && NET.close(); }catch(e){}
+  NET=null; G=null; ME=0;
+  const keepName=UI.myName, keepAlloc=UI.alloc;
+  UI={myName:keepName,alloc:keepAlloc};
+  netStatus(""); closeModal(); render(); window.scrollTo(0,0);
+}
 // 單人對戰 AI：AI 當玩家2，在本機用同一套引擎行動
 function startAI(name){
   ME=0; UI.ai=true; UI.myName=name; NET={send(){}};
@@ -1345,6 +1357,7 @@ function act(a,x){
 // ---------- 畫面 ----------
 function render(){
   const app=$("#app");
+  $("#homeBtn").classList.toggle("hidden",!(G||UI.waiting||UI.joining)); // 只在遊戲中／等待中顯示
   if(!G){ app.innerHTML=lobbyHTML(); bindLobby(); $("#modalRoot").innerHTML=""; return; }
   if(G.phase==="setup"){ app.innerHTML=setupHTML(); bindSetup(); $("#modalRoot").innerHTML=""; return; }
   app.innerHTML=gameHTML();
@@ -1917,6 +1930,12 @@ function reportModal(){
     <div style="margin-top:12px"><button class="btn" id="rOk">${G.round>=ROUNDS?"查看最終結果":G.round?"準備下一回合":"開始第 1 回合"}</button></div>`);
   $("#rOk").onclick=()=>act("ready");
 }
+$("#homeBtn").onclick=()=>{
+  const msg=!G?"回到首頁？（會取消等待）":UI.ai?"回到首頁？這局會保留，之後可以在首頁按「繼續上一局」接回。":
+    ME===0?"回到首頁？你是房主，對手會斷線；這局會保留，之後可以按「繼續上一局」再開房，讓對手用同一組房間碼重新加入。":
+    "回到首頁？你會離開房間，之後可以在首頁按「重新加入」回來。";
+  confirmModal(msg,goHome);
+};
 (()=>{ const b=$("#sndBtn"); const upd=()=>{ b.textContent=SFX.isMuted()?"🔇":"🔊"; }; upd(); b.onclick=()=>{ SFX.setMuted(!SFX.isMuted()); upd(); }; })();
 // Ctrl+Z：回上一步（輸入框裡不攔截）
 document.addEventListener("keydown",e=>{
