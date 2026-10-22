@@ -69,6 +69,27 @@ h3{margin:0 0 8px;font-size:16px}
 .ntab th{color:var(--muted);font-weight:600;text-align:left}
 .floor.fogfloor{background:repeating-linear-gradient(135deg,rgba(90,83,104,.28) 0 8px,rgba(34,31,41,.28) 8px 16px);border-color:#5a5368}
 .floor.fogfloor .fl{color:#a79fbb}
+/* 可走到的樓層：亮框，可點 */
+.floor.reach{cursor:pointer;border-color:color-mix(in srgb,var(--me) 55%,transparent);background:color-mix(in srgb,var(--me) 8%,transparent)}
+.floor.reach:hover{background:color-mix(in srgb,var(--me) 18%,transparent)}
+.floor.reach .fl{color:var(--me)}
+.room.click.far{border-style:dashed}
+/* 對手大樓：可投毒的樓層 */
+.floor.pickp{cursor:crosshair;border-color:color-mix(in srgb,var(--poison) 50%,transparent)}
+.floor.pickp:hover{background:var(--poison-bg);border-color:var(--poison)}
+/* 回合步驟 */
+.stepper{display:flex;flex-wrap:wrap;align-items:center;gap:4px;margin-bottom:10px;font-size:12.5px}
+.stepper .st{padding:3px 8px;border-radius:12px;border:1px solid var(--line);color:var(--muted)}
+.stepper .st.done{color:var(--good);border-color:color-mix(in srgb,var(--good) 50%,transparent)}
+.stepper .st.now{color:#1a0f08;background:var(--ember);border-color:var(--ember);font-weight:800}
+.stepper .arr{color:var(--line)}
+/* 結算報告分區 */
+.report .rg{margin:8px 0}
+.report .rgh{font-size:12px;color:var(--muted);letter-spacing:.15em;border-bottom:1px solid var(--line);padding-bottom:2px;margin-bottom:4px}
+.report .rl{padding:2px 0;border:0}
+.report .rl.bad{color:#ff8f86}
+.report .rl.good{color:#8fe3a8}
+.report .hpchip{background:var(--panel2);border:1px solid var(--line);border-radius:14px;padding:3px 10px;font-weight:700}
 .room.fog{background:repeating-linear-gradient(135deg,#2b2733 0 6px,#221f29 6px 12px);border-color:#5a5368;color:#8f88a0;text-decoration:line-through;cursor:not-allowed}
 .tok{font-size:12px;font-weight:800;border-radius:10px;padding:1px 7px;margin-left:auto}
 .tok.me{background:var(--me);color:#06141c}
@@ -197,6 +218,20 @@ h3{margin:0 0 8px;font-size:16px}
   .credit{position:fixed;right:12px;bottom:8px;z-index:40;font-size:12px;color:var(--muted);background:rgba(20,17,15,.85);border:1px solid var(--line);border-radius:6px;padding:3px 9px;pointer-events:none}
   .sndBtn{position:fixed;top:10px;right:12px;z-index:60;background:var(--panel2);border:1px solid var(--line);color:var(--text);border-radius:8px;padding:3px 9px}
 @media (max-width:980px){
+  /* 窄螢幕：行動欄排第一，不用捲過兩棟大樓才找得到該做的事 */
+  .main{display:flex;flex-direction:column}
+  .side{display:contents}
+  .actWrap{order:1} .bld.me{order:2} .bagPanel{order:3} .bld.opp{order:4} .logPanel{order:5}
+  /* 對手大樓精簡：只看毒層、迷霧、最後位置 */
+  .bld.opp .rooms .room{display:none}
+  .bld.opp .floor{min-height:40px}
+  /* 觸控尺寸 */
+  .btn.small{min-height:42px;padding:8px 14px;font-size:14px}
+  .room{padding:9px 12px;font-size:14px}
+  .floor{min-height:52px}
+  .pick{min-height:48px}
+  /* 附註不要蓋住內容 */
+  .credit{position:static;display:block;width:max-content;max-width:calc(100% - 32px);margin:8px auto 24px}
   .main{grid-template-columns:1fr}
   .topbar{grid-template-columns:1fr 1fr}
   .roundbox{grid-column:1/3;grid-row:1}
@@ -1200,11 +1235,11 @@ function gameHTML(){
   <div class="main">
     ${buildingHTML(ME)}
     ${buildingHTML(1-ME)}
-    <div class="side">${actionHTML()}
-      <div class="panel"><h3>背包 <span class="muted" style="font-size:12px">${me.inv.length}/${has(me,"dimpocket")?"∞":me.carry}</span></h3>
+    <div class="side"><div class="actWrap">${actionHTML()}</div>
+      <div class="panel bagPanel"><h3>背包 <span class="muted" style="font-size:12px">${me.inv.length}/${has(me,"dimpocket")?"∞":me.carry}</span></h3>
         <div class="inv">${me.inv.length?me.inv.map((it,i)=>itemCard(it,i,G.phase==="action"&&!me.t.ended)).join(""):'<span class="muted">空</span>'}</div>
         ${itemButtonsHTML()}</div>
-      <div class="panel"><h3>紀錄</h3><div class="log" id="log">${G.log.filter(l=>l.to===undefined||l.to===ME).slice(-120).map(l=>
+      <div class="panel logPanel"><h3>紀錄</h3><div class="log" id="log">${G.log.filter(l=>l.to===undefined||l.to===ME).slice(-120).map(l=>
         `<div class="${l.to!==undefined?"pv":""} ${/^── /.test(l.text)?"rd":""}">${esc(l.text)}</div>`).join("")}</div></div>
     </div>
   </div>
@@ -1235,6 +1270,19 @@ function notesHTML(){
       </ul></div>
   </div>`;
 }
+// 這回合能不能一路走到 f（每一步都要還能走到可停留的樓層）
+function pathOk(me,f){
+  const t=me.t;
+  if(G.phase!=="action"||t.ended||t.committed||t.poison===null||f===me.floor) return false;
+  if(Math.abs(f-me.floor)>t.steps) return false;
+  const dir=f<me.floor?-1:1; let cur=me.floor, st=t.steps;
+  while(cur!==f){ cur+=dir; st--; if(!canFinish(G,me,cur,st)) return false; }
+  return true;
+}
+function moveTo(f){
+  const me=G.players[ME], n=Math.abs(f-me.floor), dir=f<me.floor?-1:1;
+  for(let i=0;i<n;i++) act("move",{dir});
+}
 function buildingHTML(pi){
   const mine=pi===ME, p=G.players[pi], poisoned=G.poison[pi];
   // 自己大樓：即時位置；對方大樓：只顯示上回合結算時的位置（行動中隱藏）
@@ -1249,6 +1297,7 @@ function buildingHTML(pi){
         const me=G.players[ME];
         if(me.room===id) cls+=" in";
         else if(G.phase==="action" && me.alive && !t.ended && !t.committed && t.poison!==null && me.floor===f && (!R.needTP||t.wh) && !(t.mustMove&&f===t.startFloor)) cls+=" click";
+        else if(me.alive && !R.needTP && pathOk(me,f) && canStop(G,me,f)) cls+=" click far"; // 別層的房間：點了會先走過去再進入
         if(R.needTP && !(me.floor===f && t.wh)) cls+=" locked";
       }
       const foggy=G.phase==="action" && (G.fog||[]).includes(f);
@@ -1260,11 +1309,28 @@ function buildingHTML(pi){
     let tok="";
     if(showFloor===f) tok=`<span class="tok ${p.alive?(mine?"me":"opp"):"ghost"}" title="${mine?"":"最後一次看到對手的位置（第"+G.revealRound[pi]+"回合）"}">${p.alive?(mine?"你":esc(p.name)):"👻"}${!mine&&!fresh?"?":""}</span>`;
     const fogF=G.phase==="action" && (G.fog||[]).includes(f);
-    return `<div class="floor ${isP?"poison":""} ${fogF?"fogfloor":""} ${showFloor===f?"here":""} ${pendingPoison.includes(f)?"target":""}" ${fogF?'title="黑暗迷霧：本回合可以經過，不能停留"':""}>
+    const me=G.players[ME];
+    const reach=mine && pathOk(me,f) && canStop(G,me,f); // 只亮能停留的樓層（迷霧層可以穿過，但不給點）
+    const pickP=!mine && G.phase==="action" && !t.ended && t.poison===null && !isP;
+    const tip=fogF?"黑暗迷霧：本回合可以經過，不能停留":reach?"點這層移動過去（"+Math.abs(f-me.floor)+" 步）":pickP?"點這層投毒":"";
+    return `<div class="floor ${isP?"poison":""} ${fogF?"fogfloor":""} ${showFloor===f?"here":""} ${pendingPoison.includes(f)?"target":""} ${reach?"reach":""} ${pickP?"pickp":""}" ${reach?`data-goto="${f}"`:""} ${pickP?`data-poisonf="${f}"`:""} ${tip?`title="${tip}"`:""}>
       <span class="fl">${fogF?"☁":""}${name}</span><div class="rooms">${rooms}${isP?'<span class="skull">☠毒</span>':""}${tok}</div></div>`;
   }).join("");
   return `<div class="panel bld ${mine?"me":"opp"}"><h3>${mine?"你的大樓":esc(p.name)+" 的大樓"}
-    <span class="tag">${mine?"紫色＝毒氣層":"標記＝最後一次看到對手的位置（戰鬥等才會更新）；虛線＝你本回合要放毒的樓層"}</span></h3>${rows}</div>`;
+    <span class="tag">${mine?"紫色＝毒氣層；亮框＝這回合走得到，點一下就移動":(G.phase==="action"&&!t.ended&&t.poison===null?"👉 點一層樓投毒":"標記＝最後一次看到對手的位置（戰鬥等才會更新）；虛線＝你本回合要放毒的樓層")}</span></h3>${rows}</div>`;
+}
+// ① 投毒 → ② 移動 → ③ 進房間 → ④ 結束回合：做完的打勾、目前這步發亮
+function stepperHTML(me){
+  const t=me.t;
+  const names=me.alive?["投毒","移動","進房間","結束回合"]:["投毒","移動","結束回合"];
+  let cur;
+  if(t.ended) cur=names.length;
+  else if(t.poison===null) cur=0;
+  else if(!me.alive) cur=1;
+  else if(!t.committed) cur=1;
+  else if(me.room && !t.roomUsed && ROOMS[me.room].type!=="teleport") cur=2;
+  else cur=3;
+  return `<div class="stepper">${names.map((n,i)=>`<span class="st ${i<cur?"done":i===cur?"now":""}">${i<cur?"✓":"①②③④"[i]} ${n}</span>`).join('<span class="arr">›</span>')}</div>`;
 }
 function actionHTML(){
   const me=G.players[ME], t=me.t, op=G.players[1-ME];
@@ -1279,11 +1345,11 @@ function actionHTML(){
   const DICE="⚀⚁⚂⚃⚄⚅";
   const fogNote=(G.fog||[]).length?`<div class="notice" style="margin-bottom:8px;border-color:#5a5368;background:#221f29">☁ 黑暗迷霧（第 ${G.round}/${FOG_ROUNDS} 回合）：<b>${G.fog.map(fl).join("、")}</b> 可以經過、不能停留${G.fog.includes(TELEPORT_FLOOR)?"；B4 被封，不能傳送":""}${G.fog.includes(WAREHOUSE_FLOOR)?"；B5 被封，大倉庫去不了":""}${t.fogExempt?"<br>（迷霧封住了你能去的樓層，這回合可以停在原地）":""}</div>`:"";
   const diceNote=fogNote+(G.dice?`<div class="notice" style="margin-bottom:8px">🎲 ${G.dice.map(([a,b])=>`${ME===0?"你":esc(G.players[0].name)} ${DICE[a-1]}${a} vs ${ME===1?"你":esc(G.players[1].name)} ${DICE[b-1]}${b}`).join("（同點重擲）→ ")}<br><b>${G.first===ME?"你先行動":esc(op.name)+" 先行動"}</b>${waitingFirst(G,ME)?"：等它結束回合後你才能搜索房間（投毒、移動可以先做）":""}</div>`:"");
-  if(t.ended) return `<div class="panel">${diceNote}<h3>已結束回合</h3><div class="muted">等待 ${esc(op.name)} 行動…</div></div>`;
-  let h=`<div class="panel">${diceNote}<h3>${me.alive?"行動":"暗影行動"}</h3>`;
+  if(t.ended) return `<div class="panel">${stepperHTML(me)}${diceNote}<h3>已結束回合</h3><div class="muted">等待 ${esc(op.name)} 行動…</div></div>`;
+  let h=`<div class="panel">${stepperHTML(me)}${diceNote}<h3>${me.alive?"行動":"暗影行動"}</h3>`;
   if(t.poison===null){
     const opts=FLOORS.map((n,f)=>G.poison[1-ME].includes(f)?"":`<button class="btn small ghost" data-poison="${f}">${n}</button>`).join("");
-    return h+`<div class="notice">第1步：選擇 ${esc(op.name)} 大樓要放毒的樓層（結算時生效）</div>
+    return h+`<div class="notice">選擇 ${esc(op.name)} 大樓要放毒的樓層（結算時生效）：<b>直接點對手大樓的樓層</b>，或按下面的按鈕</div>
       <div class="row" style="margin-top:8px">${opts}<button class="btn small ghost" data-poison="-1">不投毒</button></div></div>`;
   }
   h+=`<div class="steps">剩餘步數 <b>${t.steps}</b>　${me.alive?`傳送剩 ${me.tpLeft} 次`:"暗影只能移動，不能進房間"}</div>`;
@@ -1293,7 +1359,7 @@ function actionHTML(){
     h+=`<div class="row" style="margin:8px 0"><button class="btn small" data-move="-1" ${t.steps<1||me.floor===0||!canFinish(G,me,me.floor-1,t.steps-1)?"disabled":""}>▲ 上樓</button>
       <button class="btn small" data-move="1" ${t.steps<1||me.floor===8||!canFinish(G,me,me.floor+1,t.steps-1)?"disabled":""}>▼ 下樓</button>
       ${me.alive&&me.floor===TELEPORT_FLOOR?`<button class="btn small" id="tp" ${t.steps<2||me.tpLeft<1||(G.fog||[]).includes(TELEPORT_FLOOR)?"disabled":""}>🌀 ${(G.fog||[]).includes(TELEPORT_FLOOR)?"B4 被迷霧封住，不能傳送":"傳送（2步）"}</button>`:""}</div>`;
-    if(me.alive) h+=`<div class="muted" style="font-size:13px">移動完後，點你所在樓層的房間進入（每回合一間）。</div>
+    if(me.alive) h+=`<div class="muted" style="font-size:13px">點你大樓上<b>亮框的樓層</b>直接移動，或點<b>房間</b>（會自動走過去並進入）。每回合一間。</div>
       <div class="row" style="margin-top:8px"><button class="btn small ghost" id="stay" ${(t.mustMove&&me.floor===t.startFloor)||fogBlocked(G,me,me.floor)?"disabled":""}>不進房間</button></div>`;
   } else if(me.room){
     const R=ROOMS[me.room];
@@ -1323,7 +1389,14 @@ function itemButtonsHTML(){
 function bindGame(){
   document.querySelectorAll("[data-poison]").forEach(b=>b.onclick=()=>act("poison",{floor:+b.dataset.poison}));
   document.querySelectorAll("[data-move]").forEach(b=>b.onclick=()=>act("move",{dir:+b.dataset.move}));
-  document.querySelectorAll(".room.click").forEach(b=>b.onclick=()=>act("enter",{room:b.dataset.room}));
+  document.querySelectorAll(".room.click").forEach(b=>b.onclick=e=>{
+    e.stopPropagation();
+    const R=ROOMS[b.dataset.room], me=G.players[ME];
+    if(R.f!==me.floor) moveTo(R.f); // 別層的房間：先走過去
+    act("enter",{room:b.dataset.room});
+  });
+  document.querySelectorAll(".floor[data-goto]").forEach(b=>b.onclick=()=>moveTo(+b.dataset.goto));
+  document.querySelectorAll(".floor[data-poisonf]").forEach(b=>b.onclick=()=>act("poison",{floor:+b.dataset.poisonf}));
 
   document.querySelectorAll("[data-drop]").forEach(b=>b.onclick=()=>{
     const it=G.players[ME].inv[+b.dataset.drop];
@@ -1572,7 +1645,16 @@ function itemsModal(){
   const ad=$("#uAd"); if(ad) ad.onchange=()=>{ U.adrenaline=ad.checked; itemsModal(); };
   $("#uOk").onclick=()=>act("useItems",U);
 }
-function reportLines(){ return G.report.filter(e=>e.to===undefined||e.to===null||e.to===ME).map(e=>`<div>${esc(e.text)}</div>`).join(""); }
+const REPORT_GROUPS=[["位置",/^你(（暗影）)?停在/],["開局",/^🚪/],["暗影",/^👻/],["戰鬥",/^⚔️/],["火箭筒",/^🚀/],["毒氣",/^(☠️|😷|🧪)/],["飢餓",/^(🍞|🍽️)/],["道具",/^(💊|🍷|💉)/],["生死",/^(💀|✨)/],["血量",/^❤️/]];
+function reportLines(){
+  const vis=G.report.filter(e=>e.to===undefined||e.to===null||e.to===ME), groups={};
+  vis.forEach(e=>{ const g=(REPORT_GROUPS.find(([,re])=>re.test(e.text))||["其他"])[0]; (groups[g]=groups[g]||[]).push(e.text); });
+  const tone=x=>/(：|\s)-\d|吸取|丟棄所有|死亡/.test(x)&&!/\+\d|擋下|沒有命中|撐住/.test(x)?"bad":/\+\d|復活|撐住|擋下|免付|支付了/.test(x)?"good":"";
+  return [...REPORT_GROUPS.map(g=>g[0]),"其他"].filter(g=>groups[g]).map(g=>{
+    if(g==="血量") return `<div class="rg"><div class="rgh">回合結束血量</div><div class="row">${groups[g].map(x=>`<span class="hpchip">${esc(x.replace(/^❤️\s*/,""))}</span>`).join("")}</div></div>`;
+    return `<div class="rg"><div class="rgh">${g}</div>${groups[g].map(x=>`<div class="rl ${tone(x)}">${esc(x)}</div>`).join("")}</div>`;
+  }).join("");
+}
 function reportModal(){
   modal(`<h3>${G.round?`第 ${G.round} 回合結算`:"開局遭遇"}</h3><div class="report">${reportLines()}</div>
     <div style="margin-top:12px"><button class="btn" id="rOk">${G.round>=ROUNDS?"查看最終結果":G.round?"準備下一回合":"開始第 1 回合"}</button></div>`);
