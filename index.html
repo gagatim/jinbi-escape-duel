@@ -382,7 +382,9 @@ input,select{background:rgba(255,255,255,.8);color:var(--text);border:1px solid 
 .notice.fognote{background:rgba(40,32,26,.08);border-color:rgba(40,32,26,.22);border-top-color:rgba(255,255,255,.8);color:#3b2a1d}
 .floor.pickp{border-color:rgba(60,160,90,.30)}
 .floor.pickp:hover{background:rgba(95,190,120,.18);border-color:rgba(60,160,90,.7)}
-.homeBtn{right:62px;font-size:13.5px;font-weight:700;color:var(--text)}
+.musicBtn{right:56px}
+.musicBtn.off{opacity:.45;text-decoration:line-through}
+.homeBtn{right:100px;font-size:13.5px;font-weight:700;color:var(--text)}
 .homeBtn:hover{border-color:rgba(224,112,58,.5);background:#fff}
 details.fold>summary{cursor:pointer;font-weight:800;font-size:16px;list-style:none;display:flex;align-items:center;gap:6px}
 details.fold>summary::-webkit-details-marker{display:none}
@@ -397,6 +399,10 @@ details.fold[open]>summary{margin-bottom:8px}
 .endHead{font-size:30px;font-weight:900;text-align:center;margin:4px 0 6px;letter-spacing:2px}
 .endHead.win{color:#c47a00;text-shadow:0 2px 16px rgba(255,190,60,.5)} .endHead.lose{color:#7a4a6a} .endHead.tie{color:var(--me)}
 .modal .hpTable{margin-top:0}
+.topInv{display:flex;flex-wrap:wrap;align-items:center;gap:4px;margin-top:6px;font-size:13px}
+.card.mini{padding:2px 7px 2px 3px;font-size:12px;gap:3px}
+.card.mini .ci{width:20px;height:20px} .card.mini .ci svg{width:13px;height:13px}
+.card.mini b{margin-left:1px;font-size:11.5px}
 /* 抽卡的卡牌維持深色（像實體遊戲卡），在淺色背景上更醒目 */
 .flipCard{--panel:#1f1a17;--panel2:#2a231f;--line:#3d332c;--text:#eee3d6;--ink:#eee3d6;--muted:#a8998a;--cyan:#7fe3f5;color:#eee3d6}
 .flipCard .flipFace{box-shadow:0 8px 20px rgba(80,50,20,.25)}
@@ -404,7 +410,7 @@ details.fold[open]>summary{margin-bottom:8px}
   /* 窄螢幕：行動欄排第一，不用捲過兩棟大樓才找得到該做的事 */
   .main{display:flex;flex-direction:column}
   .side{display:contents}
-  .actWrap{order:1} .bld.me{order:2} .bagPanel{order:3} .bld.opp{order:4} .logPanel{order:5}
+  .actWrap{order:1} .bagPanel{order:2} .bld.me{order:3} .bld.opp{order:4} .logPanel{order:5}
   /* 對手大樓精簡：只看毒層、迷霧、最後位置 */
   .bld.opp .rooms .room{display:none}
   .bld.opp .floor{min-height:40px}
@@ -428,6 +434,7 @@ details.fold[open]>summary{margin-bottom:8px}
 </div>
 <div id="modalRoot"></div>
 <button class="sndBtn" id="sndBtn" title="音效開關">🔊</button>
+<button class="sndBtn musicBtn" id="musicBtn" title="背景音樂開關">🎵</button>
 <button class="sndBtn homeBtn hidden" id="homeBtn" title="回到首頁（遊戲會保留）">🏠 首頁</button>
 <div class="credit">小葉設計　未經允許　請勿使用</div>
 
@@ -1463,6 +1470,7 @@ setInterval(()=>{
 // ---------- 畫面 ----------
 function render(){
   const app=$("#app");
+  if(typeof syncMusic==="function") syncMusic();
   $("#homeBtn").classList.toggle("hidden",!(G||UI.waiting||UI.joining)); // 只在遊戲中／等待中顯示
   if(!G){ app.innerHTML=lobbyHTML(); bindLobby(); $("#modalRoot").innerHTML=""; return; }
   if(G.phase==="setup"){ app.innerHTML=setupHTML(); bindSetup(); $("#modalRoot").innerHTML=""; return; }
@@ -1570,7 +1578,16 @@ function pCard(p,cls,full){
   return `<div class="pcard ${cls}"><div class="row"><span class="nm">${esc(p.name)}</span>
     ${p.alive?`<span>HP <b>${p.hp}</b>/10</span>`:`<span class="muted">👻 暗影（${p.drain}/4）</span>`}</div>
     <div class="hpbar"><i style="width:${hpPct}%;${p.hp<=3?"background:var(--bad)":""}"></i></div>
-    <div class="stats">力量 <b>${p.power}</b>　速度 <b>${p.speed}</b>${full&&has(p,"rope")?"(+2)":""}　負重 <b>${full&&has(p,"dimpocket")?"∞":p.carry}</b>${full?`　武力 <b>${combatPower(p)}</b>${hasGun(p)?" 🔫":""}`:""}</div></div>`;
+    <div class="stats">力量 <b>${p.power}</b>　速度 <b>${p.speed}</b>${full&&has(p,"rope")?"(+2)":""}　負重 <b>${full&&has(p,"dimpocket")?"∞":p.carry}</b>${full?`　武力 <b>${combatPower(p)}</b>${hasGun(p)?" 🔫":""}`:""}</div>${full?topInvHTML(p):""}</div>`;
+}
+// 頂部玩家卡裡的道具列：相同道具合併成「圖示×數量」，滑過顯示說明
+function topInvHTML(p){
+  if(!p.alive) return "";
+  if(!p.inv.length) return `<div class="topInv"><span class="muted" style="font-size:12px">🎒 身上沒有道具</span></div>`;
+  const cnt={}; p.inv.forEach(it=>{ cnt[it]=(cnt[it]||0)+1; });
+  const over=carryRoom(p)<0;
+  return `<div class="topInv">🎒 ${Object.keys(cnt).map(it=>`<span class="card t-${tierOf(it)} i-${it} mini" title="${esc(ITEMS[it].n+"："+(ITEMS[it].d||""))}"><span class="ci">${itemIconHTML(it)}</span>${ITEMS[it].n}${cnt[it]>1?`<b>×${cnt[it]}</b>`:""}</span>`).join("")}
+    <span class="muted" style="font-size:11.5px;${over?"color:var(--bad);font-weight:700":""}">${p.inv.length}/${has(p,"dimpocket")?"∞":p.carry}${over?" 超重":""}</span></div>`;
 }
 const PHASE_NAME={action:"行動階段",items:"結算：使用道具",report:"結算報告",end:"遊戲結束"};
 function gameHTML(){
@@ -1875,7 +1892,57 @@ const SFX=(()=>{
     s.connect(f); f.connect(g); g.connect(master); env(g.gain,t0,o.peak,0.003,o.dur); s.start(t0,Math.random()*0.5); s.stop(t0+o.dur+0.03);
   }catch(e){} }
   const ok=()=>!muted && !!ensure();
+  // ---------- 背景音樂：即時合成的懸疑氛圍（A 小調 Am–F–Dm–E），張力越高節奏越快、音色越亮 ----------
+  const bgm={timer:null,next:0,step:0,tension:0,gain:null,filt:null};
+  const mtof=m=>440*Math.pow(2,(m-69)/12);
+  const CHORDS=[[57,60,64],[53,57,60],[50,53,57],[52,56,59]];
+  function bgmSetup(){
+    if(bgm.gain) return;
+    bgm.gain=ctx.createGain(); bgm.gain.gain.value=0;
+    bgm.filt=ctx.createBiquadFilter(); bgm.filt.type="lowpass"; bgm.filt.frequency.value=800; bgm.filt.Q.value=0.8;
+    const dl=ctx.createDelay(1), fb=ctx.createGain(), wet=ctx.createGain();
+    dl.delayTime.value=0.42; fb.gain.value=0.33; wet.gain.value=0.35;
+    bgm.filt.connect(bgm.gain); bgm.filt.connect(dl); dl.connect(fb); fb.connect(dl); dl.connect(wet); wet.connect(bgm.gain);
+    bgm.gain.connect(master);
+  }
+  function bnote(m,t,dur,type,peak){
+    const o=ctx.createOscillator(), g=ctx.createGain(); o.type=type; o.frequency.value=mtof(m);
+    o.connect(g); g.connect(bgm.filt);
+    g.gain.setValueAtTime(0.0001,t); g.gain.linearRampToValueAtTime(peak,t+Math.min(0.03,dur*0.2)); g.gain.exponentialRampToValueAtTime(0.0001,t+dur);
+    o.start(t); o.stop(t+dur+0.05);
+  }
+  function bpad(ch,t,dur){
+    ch.forEach(m=>[-7,7].forEach(c=>{
+      const o=ctx.createOscillator(), g=ctx.createGain(); o.type="sawtooth"; o.frequency.value=mtof(m-12); o.detune.value=c;
+      o.connect(g); g.connect(bgm.filt);
+      g.gain.setValueAtTime(0.0001,t); g.gain.linearRampToValueAtTime(0.018,t+dur*0.35); g.gain.linearRampToValueAtTime(0.0001,t+dur+0.5);
+      o.start(t); o.stop(t+dur+0.6);
+    }));
+  }
+  function btick(t,peak){
+    const sN=ctx.createBufferSource(), f=ctx.createBiquadFilter(), g=ctx.createGain();
+    sN.buffer=noiseBuf; f.type="highpass"; f.frequency.value=6000; sN.connect(f); f.connect(g); g.connect(bgm.gain);
+    g.gain.setValueAtTime(peak,t); g.gain.exponentialRampToValueAtTime(0.0001,t+0.05); sN.start(t,Math.random()*0.5); sN.stop(t+0.07);
+  }
+  function bgmSchedule(){
+    const T=bgm.tension, beat=60/(66+T*46);
+    while(bgm.next<ctx.currentTime+0.25){
+      const t=bgm.next, st=bgm.step, ch=CHORDS[Math.floor(st/8)%4], sub=st%8;
+      if(sub===0) bpad(ch,t,beat*4);
+      if(sub%2===0) bnote(ch[0]-24,t,beat*0.9,"triangle",0.12);
+      if(T>0.35 && sub%2===1) bnote(ch[0]-24,t,beat*0.35,"triangle",0.06);
+      if(Math.random()<0.22+T*0.3) bnote(ch[Math.floor(Math.random()*3)]+(Math.random()<.5?12:0),t,beat*0.8,"triangle",0.03);
+      if(T>0.5) btick(t,sub%2?0.012:0.026);
+      bgm.next+=beat/2; bgm.step++;
+    }
+    bgm.filt.frequency.setTargetAtTime(650+T*1700,ctx.currentTime,0.6);
+  }
   return {
+    bgmStart(){ if(!ensure()) return; bgmSetup(); if(bgm.timer) return; bgm.next=ctx.currentTime+0.1;
+      bgm.gain.gain.cancelScheduledValues(ctx.currentTime); bgm.gain.gain.setTargetAtTime(0.6,ctx.currentTime,1.5); bgm.timer=setInterval(bgmSchedule,60); },
+    bgmStop(){ if(!bgm.timer) return; clearInterval(bgm.timer); bgm.timer=null; bgm.gain.gain.setTargetAtTime(0,ctx.currentTime,0.4); },
+    bgmTension(x){ bgm.tension=Math.max(0,Math.min(1,x)); },
+    bgmPlaying:()=>!!bgm.timer,
     isMuted:()=>muted,
     setMuted(v){ muted=v; try{ localStorage.setItem("sfxMuted",v?"1":"0"); }catch(e){} },
     move(){ if(!ok()) return; const p=J(1,0.08), v=J(1,0.15);
@@ -2089,6 +2156,25 @@ function reportModal(){
     <div style="margin-top:12px"><button class="btn" id="rOk">${G.round>=ROUNDS?"查看最終結果":G.round?"準備下一回合":"開始第 1 回合"}</button></div>`);
   $("#rOk").onclick=()=>act("ready");
 }
+// ---------- 背景音樂：預設開啟；瀏覽器規定要先點一下畫面才能出聲 ----------
+function musicOn(){ try{ return localStorage.getItem("bgmOn")!=="0"; }catch(e){ return true; } }
+function musicTension(){
+  if(!G || G.phase==="setup") return 0.08;
+  if(G.phase==="end") return 0.05;
+  const me=G.players[ME];
+  let x=(G.round-1)/5*0.75;
+  if(me.alive && me.hp<=3) x+=0.2;
+  if(me.alive && (G.poison[ME]||[]).includes(me.floor)) x+=0.1;
+  return x;
+}
+function syncMusic(){
+  const b=$("#musicBtn"); b.classList.toggle("off",!musicOn());
+  SFX.bgmTension(musicTension());
+  if(musicOn() && !document.hidden && UI.userGesture) SFX.bgmStart(); else SFX.bgmStop();
+}
+document.addEventListener("pointerdown",()=>{ if(!UI.userGesture){ UI.userGesture=true; syncMusic(); } },true);
+document.addEventListener("visibilitychange",syncMusic);
+$("#musicBtn").onclick=()=>{ try{ localStorage.setItem("bgmOn",musicOn()?"0":"1"); }catch(e){} syncMusic(); };
 $("#homeBtn").onclick=()=>{
   const msg=!G?"回到首頁？（會取消等待）":UI.ai?"回到首頁？這局會保留，之後可以在首頁按「繼續上一局」接回。":
     ME===0?"回到首頁？你是房主，對手會斷線；這局會保留，之後可以按「繼續上一局」再開房，讓對手用同一組房間碼重新加入。":
