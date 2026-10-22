@@ -14,13 +14,20 @@
 *{box-sizing:border-box}
 body{margin:0;background:var(--bg);color:var(--text);font-family:"Noto Sans TC","Microsoft JhengHei",system-ui,sans-serif;font-size:15px;line-height:1.5}
 button{font:inherit;cursor:pointer}
-/* 半透明橘：淡底＋細框＋亮字，滑過加深 */
-.btn{background:color-mix(in srgb,var(--ember) 26%,transparent);color:var(--ember-bright);border:1px solid color-mix(in srgb,var(--ember) 70%,transparent);
-  border-radius:8px;padding:8px 14px;font-weight:700;backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px);
-  box-shadow:inset 0 1px 0 rgba(255,255,255,.08),0 2px 10px rgba(0,0,0,.25);transition:background .15s,border-color .15s,color .15s,box-shadow .15s}
-.btn:hover{background:color-mix(in srgb,var(--ember) 40%,transparent);border-color:var(--ember-bright);color:#ffd9c2;box-shadow:inset 0 1px 0 rgba(255,255,255,.12),0 0 14px color-mix(in srgb,var(--ember) 35%,transparent)}
-.btn.small{background:color-mix(in srgb,var(--ember) 18%,transparent)}
-.btn.small:hover{background:color-mix(in srgb,var(--ember) 34%,transparent)}
+/* 玻璃橘：上亮下深的半透明漸層＋頂部反光＋外發光，避免在深色背景上變成暗咖啡色 */
+.btn{position:relative;color:#ffe6d6;font-weight:800;border-radius:10px;padding:9px 16px;letter-spacing:.5px;
+  background:linear-gradient(180deg,rgba(255,170,120,.42) 0%,rgba(240,120,60,.24) 48%,rgba(200,90,40,.20) 100%);
+  border:1px solid rgba(255,170,110,.55);border-top-color:rgba(255,215,185,.75);
+  text-shadow:0 1px 10px rgba(255,120,60,.55);
+  backdrop-filter:blur(10px) saturate(1.4);-webkit-backdrop-filter:blur(10px) saturate(1.4);
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.28),inset 0 -10px 18px rgba(255,110,50,.16),0 6px 20px rgba(224,112,58,.22);
+  transition:transform .12s,box-shadow .15s,background .15s,border-color .15s}
+.btn:hover{background:linear-gradient(180deg,rgba(255,185,140,.55) 0%,rgba(250,130,70,.34) 50%,rgba(215,100,45,.28) 100%);
+  border-color:rgba(255,190,140,.8);box-shadow:inset 0 1px 0 rgba(255,255,255,.35),inset 0 -10px 18px rgba(255,120,60,.2),0 8px 26px rgba(255,120,60,.38);transform:translateY(-1px)}
+.btn:active{transform:translateY(0);box-shadow:inset 0 2px 6px rgba(0,0,0,.25),0 3px 10px rgba(224,112,58,.2)}
+.btn.small{padding:5px 11px;font-size:13px;border-radius:8px;
+  background:linear-gradient(180deg,rgba(255,170,120,.30) 0%,rgba(240,120,60,.16) 55%,rgba(200,90,40,.14) 100%)}
+.btn.small:hover{background:linear-gradient(180deg,rgba(255,185,140,.44) 0%,rgba(250,130,70,.26) 55%,rgba(215,100,45,.22) 100%)}
 .btn:disabled,.btn.small:disabled{background:rgba(255,255,255,.04);border-color:var(--line);color:#7d7064;box-shadow:none;cursor:not-allowed}
 .btn.ghost{background:transparent;color:var(--text);border:1px solid var(--line)}
 .btn.ghost:hover{border-color:var(--ember)}
@@ -87,7 +94,8 @@ h3{margin:0 0 8px;font-size:16px}
 .stepper{display:flex;flex-wrap:wrap;align-items:center;gap:4px;margin-bottom:10px;font-size:12.5px}
 .stepper .st{padding:3px 8px;border-radius:12px;border:1px solid var(--line);color:var(--muted)}
 .stepper .st.done{color:var(--good);border-color:color-mix(in srgb,var(--good) 50%,transparent)}
-.stepper .st.now{color:var(--ember-bright);background:color-mix(in srgb,var(--ember) 24%,transparent);border-color:color-mix(in srgb,var(--ember) 75%,transparent);font-weight:800}
+.stepper .st.now{color:#ffe6d6;font-weight:800;text-shadow:0 1px 8px rgba(255,120,60,.5);
+  background:linear-gradient(180deg,rgba(255,170,120,.40),rgba(220,100,45,.20));border-color:rgba(255,190,140,.7);box-shadow:inset 0 1px 0 rgba(255,255,255,.25),0 3px 12px rgba(224,112,58,.25)}
 .stepper .arr{color:var(--line)}
 /* 結算報告分區 */
 .report .rg{margin:8px 0}
@@ -234,15 +242,22 @@ h3{margin:0 0 8px;font-size:16px}
   .sndBtn{position:fixed;top:10px;right:12px;z-index:60;background:var(--panel2);border:1px solid var(--line);color:var(--text);border-radius:8px;padding:3px 9px}
 /* ===================== 質感調整：半透明玻璃面板＋暖色微光 ===================== */
 body{background:
-  radial-gradient(900px 520px at 12% -8%,rgba(224,112,58,.13),transparent 60%),
-  radial-gradient(800px 600px at 100% 0%,rgba(63,167,224,.08),transparent 55%),
-  radial-gradient(1000px 700px at 50% 110%,rgba(125,75,196,.08),transparent 60%),
-  var(--bg);background-attachment:fixed}
+  radial-gradient(760px 480px at 8% -6%,rgba(255,128,64,.26),transparent 62%),
+  radial-gradient(640px 520px at 102% 8%,rgba(63,167,224,.16),transparent 60%),
+  radial-gradient(900px 640px at 55% 108%,rgba(140,80,210,.17),transparent 62%),
+  radial-gradient(520px 380px at 70% 45%,rgba(255,150,80,.07),transparent 70%),
+  linear-gradient(180deg,#15100d 0%,#100c0a 100%);background-attachment:fixed}
+/* 細顆粒：讓深色背景不是死黑，半透明疊上去才有層次 */
+body::before{content:"";position:fixed;inset:0;pointer-events:none;z-index:0;opacity:.07;mix-blend-mode:overlay;
+  background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E")}
+.wrap{position:relative;z-index:1}
 h1{font-weight:900;letter-spacing:3px;text-shadow:0 2px 18px rgba(224,112,58,.25)}
 h3{letter-spacing:.5px}
-.panel,.pcard,.roundbox{background:var(--glass);border:1px solid var(--hair);border-radius:14px;
-  backdrop-filter:blur(10px) saturate(1.1);-webkit-backdrop-filter:blur(10px) saturate(1.1);
-  box-shadow:inset 0 1px 0 rgba(255,255,255,.05),0 8px 28px rgba(0,0,0,.28)}
+.panel,.pcard,.roundbox{
+  background:linear-gradient(155deg,rgba(255,245,235,.075) 0%,rgba(255,245,235,.02) 38%,rgba(255,245,235,0) 70%),rgba(30,23,19,.58);
+  border:1px solid rgba(255,235,215,.10);border-top-color:rgba(255,240,225,.18);border-radius:16px;
+  backdrop-filter:blur(16px) saturate(1.35);-webkit-backdrop-filter:blur(16px) saturate(1.35);
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.07),0 10px 34px rgba(0,0,0,.35)}
 .pcard{position:relative;overflow:hidden}
 .pcard::before{content:"";position:absolute;left:0;top:0;bottom:0;width:3px}
 .pcard.me{border-color:color-mix(in srgb,var(--me) 40%,transparent)} .pcard.me::before{background:var(--me)}
@@ -254,9 +269,10 @@ h3{letter-spacing:.5px}
 .hpbar i[style*="--bad"]{background:linear-gradient(90deg,#c43d34,#ff7a6e)!important;box-shadow:0 0 10px rgba(226,85,77,.55)}
 input,select{background:var(--glass2);border:1px solid var(--hair2);border-radius:8px}
 input:focus,select:focus{outline:none;border-color:color-mix(in srgb,var(--ember) 70%,transparent);box-shadow:0 0 0 3px color-mix(in srgb,var(--ember) 18%,transparent)}
-.btn.ghost{background:var(--glass2);border-color:var(--hair2)}
-.btn.ghost:hover{background:rgba(255,240,225,.09)}
-.notice{background:color-mix(in srgb,var(--ember) 8%,transparent);border:1px solid color-mix(in srgb,var(--ember) 26%,transparent);border-radius:10px}
+.btn.ghost{color:var(--text);text-shadow:none;background:linear-gradient(180deg,rgba(255,245,235,.10),rgba(255,245,235,.035));
+  border-color:rgba(255,235,215,.16);border-top-color:rgba(255,240,225,.28);box-shadow:inset 0 1px 0 rgba(255,255,255,.12),0 4px 14px rgba(0,0,0,.25)}
+.btn.ghost:hover{background:linear-gradient(180deg,rgba(255,245,235,.16),rgba(255,245,235,.06));border-color:rgba(255,200,160,.45);box-shadow:inset 0 1px 0 rgba(255,255,255,.18),0 6px 18px rgba(0,0,0,.3)}
+.notice{background:linear-gradient(155deg,rgba(255,150,90,.13),rgba(255,150,90,.04));border:1px solid rgba(255,160,100,.24);border-top-color:rgba(255,190,150,.32);border-radius:12px;box-shadow:inset 0 1px 0 rgba(255,255,255,.05)}
 .floor{border-radius:9px}
 .floor:not(.poison):not(.fogfloor):not(.here):not(.reach):not(.pickp):hover{background:rgba(255,240,225,.025)}
 .floor.here{background:color-mix(in srgb,var(--me) 10%,transparent);border-color:color-mix(in srgb,var(--me) 70%,transparent);box-shadow:0 0 16px color-mix(in srgb,var(--me) 18%,transparent)}
@@ -278,6 +294,87 @@ input:focus,select:focus{outline:none;border-color:color-mix(in srgb,var(--ember
 .stepper .st{background:var(--glass2);border-color:var(--hair)}
 .hpTable th,.hpTable td{border-color:var(--hair)}
 .ntab th,.ntab td{border-color:var(--hair)}
+
+/* ===================== 淺色主題（奶油黃）：放在最後覆蓋上面的深色設定 ===================== */
+:root{
+  --bg:#f7f0e1; --panel:#fffaf2; --panel2:#f4ebdc; --line:#e3d4bd; --text:#3b2a1d; --muted:#8a7461;
+  --ember:#e0703a; --ember-bright:#c85a22; --gold:#a9780c; --me:#2683c6; --opp:#d4622a;
+  --good:#2f9a57; --bad:#d4473d; --poison:#7d4bc4; --poison-bg:rgba(125,75,196,.12); --cyan:#1f93ad;
+  --glass:rgba(255,252,246,.62); --glass2:rgba(255,255,255,.62); --hair:rgba(120,85,50,.13); --hair2:rgba(120,85,50,.2);
+}
+body{color:var(--text);background:
+  radial-gradient(760px 480px at 6% -8%,rgba(255,170,110,.38),transparent 62%),
+  radial-gradient(640px 520px at 104% 6%,rgba(120,190,240,.30),transparent 60%),
+  radial-gradient(900px 640px at 55% 110%,rgba(190,150,240,.26),transparent 62%),
+  radial-gradient(520px 380px at 72% 46%,rgba(255,220,150,.35),transparent 70%),
+  linear-gradient(180deg,#fbf6ea 0%,#f4ead6 100%);background-attachment:fixed}
+body::before{opacity:.05;mix-blend-mode:multiply}
+h1{color:#3b2a1d;text-shadow:0 2px 14px rgba(224,112,58,.18)}
+/* 玻璃面板：白色半透明＋柔和暖色陰影 */
+.panel,.pcard,.roundbox{
+  background:linear-gradient(155deg,rgba(255,255,255,.88) 0%,rgba(255,255,255,.62) 45%,rgba(255,250,240,.50) 100%);
+  border:1px solid rgba(150,110,70,.14);border-top-color:rgba(255,255,255,.95);
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.9),0 10px 30px rgba(140,95,50,.12),0 1px 3px rgba(140,95,50,.08)}
+.roundbox{background:linear-gradient(160deg,rgba(255,190,140,.45),rgba(255,255,255,.65) 70%)}
+.hpbar{background:rgba(120,85,50,.12)}
+/* 按鈕：橘色玻璃（淺底上會透亮，不會發悶） */
+.btn{color:#8a3511;text-shadow:0 1px 0 rgba(255,255,255,.6);
+  background:linear-gradient(180deg,rgba(255,190,145,.75) 0%,rgba(255,150,95,.48) 50%,rgba(240,120,60,.40) 100%);
+  border:1px solid rgba(224,112,58,.45);border-top-color:rgba(255,235,220,.95);
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.75),inset 0 -8px 16px rgba(240,120,60,.18),0 6px 16px rgba(224,112,58,.22)}
+.btn:hover{color:#7a2a08;background:linear-gradient(180deg,rgba(255,200,160,.9) 0%,rgba(255,150,95,.62) 50%,rgba(240,115,55,.52) 100%);
+  border-color:rgba(224,112,58,.65);box-shadow:inset 0 1px 0 rgba(255,255,255,.85),inset 0 -8px 16px rgba(240,120,60,.22),0 8px 22px rgba(224,112,58,.32)}
+.btn.small{background:linear-gradient(180deg,rgba(255,200,160,.62) 0%,rgba(255,160,105,.36) 55%,rgba(240,125,65,.30) 100%)}
+.btn.small:hover{background:linear-gradient(180deg,rgba(255,205,170,.82) 0%,rgba(255,155,100,.52) 55%,rgba(240,120,60,.44) 100%)}
+.btn.ghost{color:var(--text);text-shadow:none;background:linear-gradient(180deg,rgba(255,255,255,.95),rgba(255,250,242,.7));
+  border-color:rgba(150,110,70,.2);border-top-color:#fff;box-shadow:inset 0 1px 0 #fff,0 3px 10px rgba(140,95,50,.10)}
+.btn.ghost:hover{background:#fff;border-color:rgba(224,112,58,.5);box-shadow:inset 0 1px 0 #fff,0 5px 14px rgba(224,112,58,.18)}
+.btn:disabled,.btn.small:disabled{background:rgba(120,85,50,.06);border-color:rgba(120,85,50,.14);color:#b3a290;text-shadow:none;box-shadow:none;transform:none}
+input,select{background:rgba(255,255,255,.8);color:var(--text);border:1px solid rgba(150,110,70,.22)}
+/* 提示框 */
+.notice{background:linear-gradient(155deg,rgba(255,200,160,.38),rgba(255,235,215,.32));border:1px solid rgba(224,112,58,.25);border-top-color:rgba(255,255,255,.9);color:#5a3a24}
+.notice.fognote{background:linear-gradient(155deg,rgba(170,150,215,.28),rgba(235,228,250,.5));border-color:rgba(125,95,190,.3);color:#3f2f6b}
+/* 大樓 */
+.floor .fl{color:#9c8670}
+.floor:not(.poison):not(.fogfloor):not(.here):not(.reach):not(.pickp):hover{background:rgba(120,85,50,.04)}
+.floor.here{background:rgba(38,131,198,.10);border-color:rgba(38,131,198,.65);box-shadow:0 0 14px rgba(38,131,198,.15)}
+.bld.opp .floor.here{background:rgba(212,98,42,.09);border-color:rgba(212,98,42,.6);box-shadow:0 0 14px rgba(212,98,42,.14)}
+.floor.poison{background:linear-gradient(90deg,rgba(125,75,196,.20),rgba(125,75,196,.07));border-color:rgba(125,75,196,.5)}
+.floor.poison .fl{color:#6a3db0} .skull{color:#6a3db0;font-weight:700}
+.floor.fogfloor{background:repeating-linear-gradient(135deg,rgba(120,105,150,.16) 0 8px,rgba(255,255,255,.25) 8px 16px);border-color:rgba(120,105,150,.4)}
+.floor.fogfloor .fl{color:#6d6385}
+.floor.reach{background:rgba(38,131,198,.06);border-color:rgba(38,131,198,.4)}
+.floor.reach:hover{background:rgba(38,131,198,.14)}
+.floor.pickp{border-color:rgba(125,75,196,.28)}
+.floor.pickp:hover{background:rgba(125,75,196,.12);border-color:rgba(125,75,196,.7)}
+.room{background:rgba(255,255,255,.72);border:1px solid rgba(150,110,70,.18);color:var(--text)}
+.room.click{border-color:rgba(224,112,58,.6);background:rgba(255,240,228,.85)}
+.room.click:hover{background:rgba(255,190,145,.6);color:#7a2a08}
+.room.in{background:var(--me);color:#fff;border-color:var(--me)}
+.room.fog{background:repeating-linear-gradient(135deg,rgba(120,105,150,.18) 0 6px,rgba(255,255,255,.5) 6px 12px);border-color:rgba(120,105,150,.35);color:#8a80a0}
+.tok.me{background:var(--me);color:#fff} .tok.opp{background:var(--opp);color:#fff}
+.stepper .st{background:rgba(255,255,255,.7);border-color:rgba(150,110,70,.18);color:var(--muted)}
+.stepper .st.done{color:var(--good);border-color:rgba(47,154,87,.4)}
+.stepper .st.now{color:#7a2a08;text-shadow:none;background:linear-gradient(180deg,rgba(255,195,150,.85),rgba(245,135,75,.5));border-color:rgba(224,112,58,.55);box-shadow:inset 0 1px 0 rgba(255,255,255,.7),0 3px 10px rgba(224,112,58,.2)}
+/* 背包、紀錄 */
+.card{background:rgba(255,255,255,.75);border-color:rgba(150,110,70,.18);color:var(--text)}
+.log div{border-bottom:1px solid rgba(150,110,70,.12)}
+.log .pv{color:#1f6fa6} .log .rd{color:#a9780c}
+/* 彈出視窗 */
+.modalbg{background:rgba(90,60,30,.22)}
+.modal{background:linear-gradient(160deg,rgba(255,255,255,.96),rgba(255,248,236,.93));border-color:rgba(224,112,58,.35);box-shadow:0 20px 60px rgba(120,80,40,.25)}
+.pick{background:rgba(255,255,255,.8);border-color:rgba(150,110,70,.2)}
+.pick.on{background:rgba(47,154,87,.12);border-color:var(--good)}
+.report .rl.bad{color:#c4392f} .report .rl.good{color:#23824a}
+.report .hpchip{background:#fff;border-color:rgba(150,110,70,.2)}
+.toast{background:rgba(255,240,236,.95);color:#7a2018;border-color:rgba(212,71,61,.5)}
+.sndBtn,.credit{background:rgba(255,255,255,.7);border-color:rgba(150,110,70,.18);color:var(--muted)}
+/* 血量表 */
+.hpTable td.down{color:#c4392f} .hpTable td.up{color:#23824a} .hpTable td.dead{color:#7d4bc4} .hpTable td.mut{color:#cdbca6}
+.hpTable th,.hpTable td,.ntab th,.ntab td{border-color:rgba(150,110,70,.18)}
+/* 抽卡的卡牌維持深色（像實體遊戲卡），在淺色背景上更醒目 */
+.flipCard{--panel:#1f1a17;--panel2:#2a231f;--line:#3d332c;--text:#eee3d6;--ink:#eee3d6;--muted:#a8998a;--cyan:#7fe3f5;color:#eee3d6}
+.flipCard .flipFace{box-shadow:0 8px 20px rgba(80,50,20,.25)}
 @media (max-width:980px){
   /* 窄螢幕：行動欄排第一，不用捲過兩棟大樓才找得到該做的事 */
   .main{display:flex;flex-direction:column}
@@ -1441,7 +1538,7 @@ function actionHTML(){
   if(G.phase==="report"||G.phase==="items")
     return `<div class="panel"><h3>結算中</h3><div class="muted">${G.phase==="items"?(t.itemsDone?"等待 "+esc(op.name)+" 決定是否使用道具…":"請決定是否使用道具"):(me.ready?"等待 "+esc(op.name)+"…":"查看結算報告")}</div></div>`;
   const DICE="⚀⚁⚂⚃⚄⚅";
-  const fogNote=(G.fog||[]).length?`<div class="notice" style="margin-bottom:8px;border-color:#5a5368;background:#221f29">☁ 黑暗迷霧（第 ${G.round}/${FOG_ROUNDS} 回合）：<b>${G.fog.map(fl).join("、")}</b> 可以經過、不能停留${G.fog.includes(TELEPORT_FLOOR)?"；B4 被封，不能傳送":""}${G.fog.includes(WAREHOUSE_FLOOR)?"；B5 被封，大倉庫去不了":""}${t.fogExempt?"<br>（迷霧封住了你能去的樓層，這回合可以停在原地）":""}</div>`:"";
+  const fogNote=(G.fog||[]).length?`<div class="notice fognote" style="margin-bottom:8px">☁ 黑暗迷霧（第 ${G.round}/${FOG_ROUNDS} 回合）：<b>${G.fog.map(fl).join("、")}</b> 可以經過、不能停留${G.fog.includes(TELEPORT_FLOOR)?"；B4 被封，不能傳送":""}${G.fog.includes(WAREHOUSE_FLOOR)?"；B5 被封，大倉庫去不了":""}${t.fogExempt?"<br>（迷霧封住了你能去的樓層，這回合可以停在原地）":""}</div>`:"";
   const diceNote=fogNote+(G.dice?`<div class="notice" style="margin-bottom:8px">🎲 ${G.dice.map(([a,b])=>`${ME===0?"你":esc(G.players[0].name)} ${DICE[a-1]}${a} vs ${ME===1?"你":esc(G.players[1].name)} ${DICE[b-1]}${b}`).join("（同點重擲）→ ")}<br><b>${G.first===ME?"你先行動":esc(op.name)+" 先行動"}</b>${waitingFirst(G,ME)?"：等它結束回合後你才能搜索房間（投毒、移動可以先做）":""}</div>`:"");
   if(t.ended) return `<div class="panel">${stepperHTML(me)}${diceNote}<h3>已結束回合</h3><div class="muted">等待 ${esc(op.name)} 行動…</div></div>`;
   let h=`<div class="panel">${stepperHTML(me)}${diceNote}<h3>${me.alive?"行動":"暗影行動"}</h3>`;
