@@ -5,3 +5,7 @@
 - 線上遊玩：https://gagatim.github.io/jinbi-escape-duel/
 - 單一檔案 `index.html`，用 PeerJS 房間碼連線（兩邊都需要網路），也可以單人對戰 AI。
 - 規則設計：見 `禁閉逃殺雙人對決.md`。
+
+---
+
+小葉設計　未經允許　請勿使用
