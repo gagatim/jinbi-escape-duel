@@ -407,7 +407,6 @@ details.fold[open]>summary{margin-bottom:8px}
 #cbStage{position:fixed;inset:0;z-index:90;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:18px;
   background:radial-gradient(ellipse at center,rgba(60,35,20,.55),rgba(20,12,8,.82));backdrop-filter:blur(4px);-webkit-backdrop-filter:blur(4px);cursor:pointer;overflow:hidden;animation:cbIn .25s ease}
 #cbStage.flash::after{content:"";position:absolute;inset:0;background:radial-gradient(circle,rgba(255,240,200,.75),transparent 60%);animation:cbFlash .35s ease-out forwards;pointer-events:none}
-#cbStage.flash .cbRow{animation:cbShake .35s}
 .cbTitle{font-size:26px;font-weight:900;color:#fff1e2;letter-spacing:2px;text-shadow:0 2px 18px rgba(255,140,60,.7);animation:cbDrop .45s cubic-bezier(.2,.9,.3,1.3)}
 .cbRow{display:flex;align-items:center;gap:46px}
 .cbCard{position:relative;width:180px;padding:16px 14px;border-radius:20px;text-align:center;color:#f5ebdf;
@@ -2233,6 +2232,15 @@ function playAnims(){
     const bar=c.querySelector(".cbHp i"), n=c.querySelector(".cbHpN b");
     if(bar) bar.style.width=Math.max(0,S.hp1/MAXHP*100)+"%"; if(n) n.textContent=Math.max(0,S.hp1); };
   const pop=(id,txt,cls)=>{ const c=st.querySelector("#cb_"+id); if(!c) return; const d=document.createElement("div"); d.className="cbNum "+(cls||""); d.textContent=txt; c.appendChild(d); c.classList.add("cbHit"); };
+  // 畫面震動：舞台和後面的遊戲畫面一起晃，力道依傷害調整；手機另外震動
+  const shake=(power)=>{
+    const a=Math.min(1.6,0.45+power*0.15), dur=380+power*45, n=10, kf=[];
+    for(let k=0;k<n;k++){ const f=1-k/n, dx=(k%2?1:-1)*(10+Math.random()*8)*a*f, dy=(Math.random()*2-1)*9*a*f, r=(Math.random()*2-1)*1.4*a*f;
+      kf.push({transform:`translate(${dx.toFixed(1)}px,${dy.toFixed(1)}px) rotate(${r.toFixed(2)}deg)`}); }
+    kf.push({transform:"none"});
+    [st,$("#app")].forEach(el=>{ if(el&&el.animate) try{ el.animate(kf,{duration:dur,easing:"ease-out"}); }catch(e){} });
+    try{ if(navigator.vibrate) navigator.vibrate(power>=4?[90,40,140]:[70]); }catch(e){}
+  };
   const footer=`<div class="cbFoot">點畫面跳過這段 · <button class="btn small ghost" id="cbAll">全部跳過</button> <button class="btn small ghost" id="cbOff">以後不播放</button></div>`;
   function scene(ev){
     if(ev.type==="fight"){
@@ -2243,12 +2251,13 @@ function playAnims(){
         <div class="cbRes" id="cbRes"></div>${footer}`;
       later(()=>{ st.querySelector(".cbCard.L").classList.add("lungeL"); st.querySelector(".cbCard.R").classList.add("lungeR"); },700);
       later(()=>{
-        st.classList.add("flash");
+        st.classList.add("flash"); shake(Math.max(dL,dR,1)+(L.gun||Rr.gun?2:0));
         const gunNote=(L.gun&&!Rr.gun)?L.name:(Rr.gun&&!L.gun)?Rr.name:"";
         if(gunNote){ SFX.boom(); st.querySelector("#cbRes").innerHTML=`💥 ${esc(gunNote)} 開槍！無視對方武力`; } else SFX.hit();
         if(dL>0) pop(L.id,"-"+dL,dL>=4?"big":""); if(dR>0) pop(Rr.id,"-"+dR,dR>=4?"big":"");
         setHP(L); setHP(Rr);
       },1000);
+      later(()=>shake(1),1250); // 餘震
       later(()=>{ st.classList.remove("flash");
         const w=dL===dR?null:dL<dR?L:Rr;
         st.querySelector("#cbRes").innerHTML+=(st.querySelector("#cbRes").innerHTML?"<br>":"")+(w?`<b>${esc(w.name)}</b> 佔上風！`:"不分勝負");
@@ -2260,7 +2269,7 @@ function playAnims(){
         <div class="cbRow">${cbCard({id:g.id,name:g.name},"L ghost","#8a5cc9",{ghost:true,d0:g.d0})}<div class="cbVS drainFx">〰️</div>${cbCard({id:v.id,name:v.name,hp0:v.hp0,hp1:v.hp1,power:null},"R",colorOf(v.id))}</div>
         <div class="cbRes" id="cbRes"></div>${footer}`;
       later(()=>{ st.querySelector(".cbCard.L").classList.add("floatGhost"); SFX.poison(); },500);
-      later(()=>{ pop(v.id,"-2"); setHP(v); const dr=st.querySelector(".cbDr"); if(dr) dr.textContent=g.d1;
+      later(()=>{ shake(1); pop(v.id,"-2"); setHP(v); const dr=st.querySelector(".cbDr"); if(dr) dr.textContent=g.d1;
         st.querySelector("#cbRes").innerHTML=`${esc(g.name)} 的暗影吸走 2 血（累積 ${g.d1}/4${g.d1>=4?"，即將復活！":""}）`; },1300);
       later(next,3000);
     } else if(ev.type==="rocket"){
@@ -2268,8 +2277,8 @@ function playAnims(){
       st.innerHTML=`<div class="cbTitle">🚀 ${esc(ev.shooter.name)} 的火箭筒轟炸 ${fl(ev.floor)}！</div>
         <div class="cbRow">${cbCard({id:v.id,name:v.name,hp0:v.hp0,hp1:v.hp1,power:null},"C",colorOf(v.id))}</div>
         <div class="rocketFly">🚀</div><div class="cbRes" id="cbRes"></div>${footer}`;
-      later(()=>{ st.classList.add("flash"); SFX.boom(); pop(v.id,"-4","big"); setHP(v); st.querySelector("#cbRes").innerHTML="命中！"; },900);
-      later(()=>st.classList.remove("flash"),1300);
+      later(()=>{ st.classList.add("flash"); shake(7); SFX.boom(); pop(v.id,"-4","big"); setHP(v); st.querySelector("#cbRes").innerHTML="命中！"; },900);
+      later(()=>{ st.classList.remove("flash"); shake(2); },1300);
       later(next,2800);
     } else next();
   }
