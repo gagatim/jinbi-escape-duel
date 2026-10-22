@@ -73,6 +73,14 @@ h3{margin:0 0 8px;font-size:16px}
 .card .x:hover{color:var(--bad)}
 .card.weapon{border-color:#b2643a}
 .card.special{border-color:#7d64c8}
+/* 背包道具圖示：與抽卡同一套 SVG，顏色依稀有度／種類 */
+.card .ci{--c:var(--cyan);width:24px;height:24px;border-radius:50%;display:inline-flex;align-items:center;justify-content:center;color:var(--c);
+  background:radial-gradient(circle at 34% 28%,color-mix(in srgb,var(--c) 38%,#1a2236) 0%,#0c1322 78%);border:1.5px solid color-mix(in srgb,var(--c) 75%,transparent)}
+.card .ci svg{width:16px;height:16px;display:block;filter:drop-shadow(0 1px 1px rgba(0,0,0,.6))}
+.card.t-rare{border-color:#c9a23a} .card.t-rare .ci{--c:#ffd45e;box-shadow:0 0 6px rgba(255,201,74,.55)}
+.card.t-trash .ci{--c:#9aa0a5;filter:grayscale(1)}
+.card.i-water .ci{--c:#5eb4ff} .card.i-food .ci{--c:#c9a46a} .card.i-wine .ci{--c:#d9577a} .card.i-pill .ci{--c:#6fe0ac}
+.card.i-rocket .ci{--c:#ff5a36} .card.i-dimpocket .ci{--c:#b57bff} .card.i-recycle .ci{--c:#4cd07a} .card.i-rope .ci{--c:#e0a24a} .card.i-gasmask .ci{--c:#35d0c0}
 .log{max-height:260px;overflow:auto;font-size:13px}
 .log div{padding:2px 0;border-bottom:1px dashed #2f2722}
 .log .pv{color:#9fd0ef}
@@ -1044,7 +1052,7 @@ function bindSetup(){
 
 function itemCard(it,i,removable){
   const I=ITEMS[it];
-  return `<span class="card ${I.w?"weapon":""} ${I.sp?"special":""}" title="${esc(I.d||"")}">${I.ic} ${I.n}${removable?`<span class="x" data-drop="${i}" title="丟棄">✕</span>`:""}</span>`;
+  return `<span class="card ${I.w?"weapon":""} ${I.sp?"special":""} t-${tierOf(it)} i-${it}" title="${esc(I.d||"")}"><span class="ci">${itemIconHTML(it)}</span>${I.n}${removable?`<span class="x" data-drop="${i}" title="丟棄">✕</span>`:""}</span>`;
 }
 function pCard(p,cls,full){
   const hpPct=Math.max(0,p.hp)/MAXHP*100;
