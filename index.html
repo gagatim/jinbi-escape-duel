@@ -403,6 +403,46 @@ details.fold[open]>summary{margin-bottom:8px}
 .card.mini{padding:2px 7px 2px 3px;font-size:12px;gap:3px}
 .card.mini .ci{width:20px;height:20px} .card.mini .ci svg{width:13px;height:13px}
 .card.mini b{margin-left:1px;font-size:11.5px}
+/* 戰鬥舞台 */
+#cbStage{position:fixed;inset:0;z-index:90;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:18px;
+  background:radial-gradient(ellipse at center,rgba(60,35,20,.55),rgba(20,12,8,.82));backdrop-filter:blur(4px);-webkit-backdrop-filter:blur(4px);cursor:pointer;overflow:hidden;animation:cbIn .25s ease}
+#cbStage.flash::after{content:"";position:absolute;inset:0;background:radial-gradient(circle,rgba(255,240,200,.75),transparent 60%);animation:cbFlash .35s ease-out forwards;pointer-events:none}
+#cbStage.flash .cbRow{animation:cbShake .35s}
+.cbTitle{font-size:26px;font-weight:900;color:#fff1e2;letter-spacing:2px;text-shadow:0 2px 18px rgba(255,140,60,.7);animation:cbDrop .45s cubic-bezier(.2,.9,.3,1.3)}
+.cbRow{display:flex;align-items:center;gap:46px}
+.cbCard{position:relative;width:180px;padding:16px 14px;border-radius:20px;text-align:center;color:#f5ebdf;
+  background:linear-gradient(160deg,#2c221c,#130e0b);border:2px solid var(--c);box-shadow:0 0 28px color-mix(in srgb,var(--c) 55%,transparent),inset 0 1px 0 rgba(255,255,255,.1)}
+.cbCard.L{animation:cbInL .55s cubic-bezier(.2,.9,.3,1.15)} .cbCard.R{animation:cbInR .55s cubic-bezier(.2,.9,.3,1.15)} .cbCard.C{animation:cbDrop .5s ease}
+.cbCard.lungeL{animation:cbLungeL .35s ease-in-out} .cbCard.lungeR{animation:cbLungeR .35s ease-in-out}
+.cbCard.cbHit{animation:cbShake .4s;box-shadow:0 0 34px rgba(255,70,50,.85)}
+.cbCard.floatGhost{animation:cbGhost 1s ease-in-out}
+.cbAv{font-size:50px;line-height:1.1;filter:drop-shadow(0 3px 8px rgba(0,0,0,.6))}
+.cbNm{font-weight:900;font-size:16px;margin:4px 0;color:var(--c);filter:brightness(1.4)}
+.cbPw{font-size:14px;color:#e8dccd} .gunTag{font-size:11px;background:#c43d34;color:#fff;border-radius:8px;padding:1px 6px}
+.cbHp{height:9px;border-radius:6px;background:rgba(255,255,255,.12);margin:8px 0 3px;overflow:hidden}
+.cbHp i{display:block;height:100%;background:linear-gradient(90deg,#3fae6a,#7be09b);transition:width .8s cubic-bezier(.3,.9,.3,1)}
+.cbHpN{font-size:13px;color:#d9ccbc}
+.cbVS{font-size:40px;font-weight:900;color:#ffb067;text-shadow:0 0 20px rgba(255,120,40,.9);animation:cbPulse .8s ease-in-out infinite alternate}
+.cbVS.drainFx{color:#c9a6ff;text-shadow:0 0 18px rgba(160,100,255,.9)}
+.cbNum{position:absolute;left:50%;top:-6px;transform:translateX(-50%);font-size:34px;font-weight:900;color:#ff5a4a;text-shadow:0 2px 0 #3a0d08,0 0 14px rgba(255,80,60,.8);animation:cbNum 1.3s ease-out forwards;pointer-events:none}
+.cbNum.big{font-size:46px;color:#ff3b2e}
+.cbRes{min-height:46px;font-size:18px;font-weight:800;color:#fff1e2;text-align:center;text-shadow:0 2px 10px rgba(0,0,0,.6)}
+.cbFoot{position:absolute;bottom:22px;font-size:13px;color:#d9ccbc}
+.cbFoot .btn{margin-left:6px}
+.rocketFly{position:absolute;top:44%;left:-80px;font-size:54px;animation:cbRocket .9s cubic-bezier(.5,0,.8,.6) forwards;filter:drop-shadow(0 0 12px rgba(255,120,40,.9))}
+@keyframes cbIn{from{opacity:0}to{opacity:1}}
+@keyframes cbFlash{from{opacity:1}to{opacity:0}}
+@keyframes cbDrop{from{opacity:0;transform:translateY(-30px) scale(.9)}to{opacity:1;transform:none}}
+@keyframes cbInL{from{opacity:0;transform:translateX(-60vw) rotate(-8deg)}to{opacity:1;transform:none}}
+@keyframes cbInR{from{opacity:0;transform:translateX(60vw) rotate(8deg)}to{opacity:1;transform:none}}
+@keyframes cbLungeL{50%{transform:translateX(60px) scale(1.06)}}
+@keyframes cbLungeR{50%{transform:translateX(-60px) scale(1.06)}}
+@keyframes cbShake{20%{transform:translateX(-10px)}40%{transform:translateX(9px)}60%{transform:translateX(-6px)}80%{transform:translateX(4px)}}
+@keyframes cbGhost{50%{transform:translateX(70px) translateY(-14px);opacity:.75}}
+@keyframes cbPulse{from{transform:scale(1)}to{transform:scale(1.15)}}
+@keyframes cbNum{0%{opacity:0;transform:translate(-50%,10px) scale(.6)}20%{opacity:1;transform:translate(-50%,-14px) scale(1.15)}100%{opacity:0;transform:translate(-50%,-60px) scale(1)}}
+@keyframes cbRocket{to{left:calc(50% - 27px);transform:scale(1.3)}}
+@media (max-width:600px){ .cbRow{gap:14px} .cbCard{width:140px;padding:12px 8px} .cbAv{font-size:38px} .cbVS{font-size:28px} .cbTitle{font-size:20px} }
 /* 抽卡的卡牌維持深色（像實體遊戲卡），在淺色背景上更醒目 */
 .flipCard{--panel:#1f1a17;--panel2:#2a231f;--line:#3d332c;--text:#eee3d6;--ink:#eee3d6;--muted:#a8998a;--cyan:#7fe3f5;color:#eee3d6}
 .flipCard .flipFace{box-shadow:0 8px 20px rgba(80,50,20,.25)}
@@ -906,12 +946,17 @@ function keepCards(G,pi,x){
 // ---------- 結算 ----------
 // 防毒面具：毒氣傷害-2（最低0）
 function poisonDmg(p,base){ return has(p,"gasmask")?Math.max(0,base-2):base; }
+// 動畫用：手上最強的武器圖示
+function weaponIcon(p){ return has(p,"shotgun")?"💥":has(p,"pistol")?"🔫":has(p,"knifeX2")?"⚔️":has(p,"knife")?"🔪":"👊"; }
+function animSide(p,hp0){ return {id:p.id,name:p.name,hp0,hp1:p.hp,power:combatPower(p),gun:hasGun(p),wp:weaponIcon(p)}; }
 function fight(G,add){
   const [a,b]=G.players, ap=combatPower(a), bp=combatPower(b), ag=hasGun(a), bg=hasGun(b);
   let da=0, db=0;
   if(ag&&!bg) db=ap; else if(bg&&!ag) da=bp;
   else { if(ap>bp) db=ap-bp; else if(bp>ap) da=bp-ap; }
+  const ha=a.hp, hb=b.hp;
   a.hp-=da; b.hp-=db; reveal(G,a); reveal(G,b);
+  (G.anims=G.anims||[]).push({type:"fight",floor:a.floor,a:animSide(a,ha),b:animSide(b,hb)});
   add("⚔️ 兩人都在 "+fl(a.floor)+"，爆發戰鬥！"+a.name+" 武力"+ap+(ag?"🔫":"")+" vs "+b.name+" 武力"+bp+(bg?"🔫":"")+
     "："+(da||db?(da?a.name+" -"+da:"")+(da&&db?"、":"")+(db?b.name+" -"+db:""):"不分勝負"));
 }
@@ -933,7 +978,7 @@ function openingEncounter(G){
   recordHP(G,"開始");
   if(P[0].floor!==P[1].floor){ startRound(G); return; }
   const add=(s,to)=>G.report.push({text:s,to});
-  G.report=[];
+  G.report=[]; G.anims=[];
   add("🚪 開局兩人都選在 "+fl(P[0].floor)+" 出發，一見面就打起來了！");
   fight(G,add); deathCheck(G,add);
   recordHP(G,"開局遭遇");
@@ -944,6 +989,7 @@ function openingEncounter(G){
 function settle(G){
   const P=G.players, rep=G.report=[], r=G.round;
   const add=(s,to)=>rep.push({text:s,to});
+  G.anims=[];
   P.forEach(p=>add("你"+(p.alive?"":"（暗影）")+"停在 "+fl(p.floor)+(p.room?" "+ROOMS[p.room].n:""),p.id));
   const living=P.filter(p=>p.alive);
   // 1) 暗影：死亡的下一回合起，與活人同樓層 → 活人扣2血、暗影回2血，累積4血復活
@@ -952,6 +998,7 @@ function settle(G){
     const v=P[opp(g.id)];
     if(v.alive && v.floor===g.floor){
       v.hp-=2; g.drain+=2; reveal(G,v); reveal(G,g);
+      G.anims.push({type:"drain",floor:g.floor,ghost:{id:g.id,name:g.name,d0:g.drain-2,d1:g.drain},victim:{id:v.id,name:v.name,hp0:v.hp+2,hp1:v.hp}});
       add("👻 "+g.name+" 的暗影在 "+fl(g.floor)+" 與 "+v.name+" 相遇：吸取2血（"+v.name+" HP "+v.hp+"；暗影累積 "+g.drain+"/4）");
     }
   });
@@ -961,7 +1008,7 @@ function settle(G){
   P.forEach(p=>{
     const v=P[opp(p.id)];
     p.t.rockets.forEach(f=>{
-      if(v.alive && v.floor===f){ v.hp-=4; reveal(G,v); add("🚀 "+p.name+" 的火箭筒命中 "+v.name+"（"+fl(f)+"）：-4（HP "+v.hp+"）"); }
+      if(v.alive && v.floor===f){ v.hp-=4; reveal(G,v); G.anims.push({type:"rocket",floor:f,shooter:{id:p.id,name:p.name},victim:{id:v.id,name:v.name,hp0:v.hp+4,hp1:v.hp}}); add("🚀 "+p.name+" 的火箭筒命中 "+v.name+"（"+fl(f)+"）：-4（HP "+v.hp+"）"); }
       else add("🚀 "+p.name+" 的火箭筒轟炸 "+v.name+" 大樓 "+fl(f)+"，沒有命中。");
     });
   });
@@ -2005,6 +2052,12 @@ function floorPicker(filter){
 }
 function renderModal(){
   const me=G.players[ME], t=me.t;
+  // 結算時先播戰鬥／暗影／火箭筒動畫，播完才出現使用道具或報告視窗
+  if((G.phase==="items"||G.phase==="report") && (G.anims||[]).length && UI.animSeen!==animKey()){
+    $("#modalRoot").innerHTML="";
+    if(!UI.animPlaying) playAnims();
+    return;
+  }
   // 由狀態決定的視窗優先
   if(G.phase==="action" && t.pending) return drawModal(t.pending);
   if(G.phase==="action" && me.flash && me.flash.r===G.round && me.flash.id!==UI.flashSeen) return flashModal(me.flash);
@@ -2149,6 +2202,78 @@ function endModal(){
   $("#endAgain").onclick=()=>{ UI.endSeen=endKey(); UI.endSfx=false; act("rematch"); };
   $("#endHome").onclick=()=>{ UI.endSeen=endKey(); UI.endSfx=false; goHome(); };
   $("#endClose").onclick=()=>{ UI.endSeen=endKey(); UI.endSfx=false; closeModal(); };
+}
+// ---------- 戰鬥／暗影／火箭筒動畫 ----------
+function animKey(){ return "anim:"+G.round+":"+JSON.stringify(G.anims||[]).length; }
+function animOffAll(){ try{ return localStorage.getItem("noFightAnim")==="1"; }catch(e){ return false; } }
+function cbCard(S,cls,color,extra){
+  const pct=v=>Math.max(0,Math.min(100,v/MAXHP*100));
+  return `<div class="cbCard ${cls}" id="cb_${S.id}" style="--c:${color}">
+    <div class="cbAv">${extra&&extra.ghost?"👻":(S.id===ME?"🧍":"🧍‍♂️")}</div>
+    <div class="cbNm">${esc(S.name)}${S.id===ME?"（你）":""}</div>
+    ${extra&&extra.ghost?`<div class="cbPw">暗影 <b class="cbDr">${extra.d0}</b>/4</div>`:
+      `${S.power!=null?`<div class="cbPw">${S.wp||""} 武力 <b>${S.power}</b>${S.gun?" <span class='gunTag'>持槍</span>":""}</div>`:""}
+       <div class="cbHp"><i style="width:${pct(S.hp0)}%"></i></div><div class="cbHpN">HP <b>${Math.max(0,S.hp0)}</b></div>`}
+  </div>`;
+}
+function playAnims(){
+  const list=(G.anims||[]).slice(), key=animKey();
+  if(animOffAll()){ UI.animSeen=key; return; }
+  UI.animPlaying=true;
+  const st=document.createElement("div"); st.id="cbStage"; document.body.appendChild(st);
+  let i=0, timers=[], done=false;
+  const later=(fn,ms)=>timers.push(setTimeout(fn,ms));
+  const clear=()=>{ timers.forEach(clearTimeout); timers=[]; };
+  const finish=()=>{ if(done) return; done=true; clear(); st.remove(); UI.animSeen=key; UI.animPlaying=false; renderModal(); };
+  const next=()=>{ clear(); if(i>=list.length) return finish(); scene(list[i++]); };
+  st.onclick=e=>{ if(e.target.id==="cbAll"){ e.stopPropagation(); return finish(); } if(e.target.id==="cbOff"){ e.stopPropagation(); try{ localStorage.setItem("noFightAnim","1"); }catch(_){} return finish(); } next(); };
+  const meColor="var(--me)", opColor="var(--opp)";
+  const colorOf=id=>id===ME?meColor:opColor;
+  const setHP=(S)=>{ const c=st.querySelector("#cb_"+S.id); if(!c) return;
+    const bar=c.querySelector(".cbHp i"), n=c.querySelector(".cbHpN b");
+    if(bar) bar.style.width=Math.max(0,S.hp1/MAXHP*100)+"%"; if(n) n.textContent=Math.max(0,S.hp1); };
+  const pop=(id,txt,cls)=>{ const c=st.querySelector("#cb_"+id); if(!c) return; const d=document.createElement("div"); d.className="cbNum "+(cls||""); d.textContent=txt; c.appendChild(d); c.classList.add("cbHit"); };
+  const footer=`<div class="cbFoot">點畫面跳過這段 · <button class="btn small ghost" id="cbAll">全部跳過</button> <button class="btn small ghost" id="cbOff">以後不播放</button></div>`;
+  function scene(ev){
+    if(ev.type==="fight"){
+      const L=ev.a.id===ME?ev.a:ev.b, Rr=ev.a.id===ME?ev.b:ev.a; // 自己固定在左邊
+      const dL=L.hp0-L.hp1, dR=Rr.hp0-Rr.hp1;
+      st.innerHTML=`<div class="cbTitle">⚔️ ${fl(ev.floor)} 遭遇戰！</div>
+        <div class="cbRow">${cbCard(L,"L",colorOf(L.id))}<div class="cbVS">VS</div>${cbCard(Rr,"R",colorOf(Rr.id))}</div>
+        <div class="cbRes" id="cbRes"></div>${footer}`;
+      later(()=>{ st.querySelector(".cbCard.L").classList.add("lungeL"); st.querySelector(".cbCard.R").classList.add("lungeR"); },700);
+      later(()=>{
+        st.classList.add("flash");
+        const gunNote=(L.gun&&!Rr.gun)?L.name:(Rr.gun&&!L.gun)?Rr.name:"";
+        if(gunNote){ SFX.boom(); st.querySelector("#cbRes").innerHTML=`💥 ${esc(gunNote)} 開槍！無視對方武力`; } else SFX.hit();
+        if(dL>0) pop(L.id,"-"+dL,dL>=4?"big":""); if(dR>0) pop(Rr.id,"-"+dR,dR>=4?"big":"");
+        setHP(L); setHP(Rr);
+      },1000);
+      later(()=>{ st.classList.remove("flash");
+        const w=dL===dR?null:dL<dR?L:Rr;
+        st.querySelector("#cbRes").innerHTML+=(st.querySelector("#cbRes").innerHTML?"<br>":"")+(w?`<b>${esc(w.name)}</b> 佔上風！`:"不分勝負");
+      },1700);
+      later(next,3300);
+    } else if(ev.type==="drain"){
+      const g=ev.ghost, v=ev.victim;
+      st.innerHTML=`<div class="cbTitle">👻 ${fl(ev.floor)} 暗影出沒！</div>
+        <div class="cbRow">${cbCard({id:g.id,name:g.name},"L ghost","#8a5cc9",{ghost:true,d0:g.d0})}<div class="cbVS drainFx">〰️</div>${cbCard({id:v.id,name:v.name,hp0:v.hp0,hp1:v.hp1,power:null},"R",colorOf(v.id))}</div>
+        <div class="cbRes" id="cbRes"></div>${footer}`;
+      later(()=>{ st.querySelector(".cbCard.L").classList.add("floatGhost"); SFX.poison(); },500);
+      later(()=>{ pop(v.id,"-2"); setHP(v); const dr=st.querySelector(".cbDr"); if(dr) dr.textContent=g.d1;
+        st.querySelector("#cbRes").innerHTML=`${esc(g.name)} 的暗影吸走 2 血（累積 ${g.d1}/4${g.d1>=4?"，即將復活！":""}）`; },1300);
+      later(next,3000);
+    } else if(ev.type==="rocket"){
+      const v=ev.victim;
+      st.innerHTML=`<div class="cbTitle">🚀 ${esc(ev.shooter.name)} 的火箭筒轟炸 ${fl(ev.floor)}！</div>
+        <div class="cbRow">${cbCard({id:v.id,name:v.name,hp0:v.hp0,hp1:v.hp1,power:null},"C",colorOf(v.id))}</div>
+        <div class="rocketFly">🚀</div><div class="cbRes" id="cbRes"></div>${footer}`;
+      later(()=>{ st.classList.add("flash"); SFX.boom(); pop(v.id,"-4","big"); setHP(v); st.querySelector("#cbRes").innerHTML="命中！"; },900);
+      later(()=>st.classList.remove("flash"),1300);
+      later(next,2800);
+    } else next();
+  }
+  next();
 }
 function reportModal(){
   playReportSounds();
