@@ -3,5 +3,5 @@
 《禁閉逃殺》的雙人連線版：兩人各在一棟大樓（2F～B7），房間物資共用庫存，互相投毒、搜刮道具，6 回合後比血量。
 
 - 線上遊玩：https://gagatim.github.io/jinbi-escape-duel/
-- 單一檔案 `index.html`，用 PeerJS 房間碼連線（兩邊都需要網路）。
+- 單一檔案 `index.html`，用 PeerJS 房間碼連線（兩邊都需要網路），也可以單人對戰 AI。
 - 規則設計：見 `禁閉逃殺雙人對決.md`。
