@@ -404,6 +404,8 @@ details.fold[open]>summary{margin-bottom:8px}
 .card.mini .ci{width:20px;height:20px} .card.mini .ci svg{width:13px;height:13px}
 .card.mini b{margin-left:1px;font-size:11.5px}
 /* 戰鬥舞台 */
+/* 鍵盤選取框 */
+.kbSel{outline:3px solid var(--ember)!important;outline-offset:3px;box-shadow:0 0 0 6px color-mix(in srgb,var(--ember) 25%,transparent),0 0 18px color-mix(in srgb,var(--ember) 45%,transparent)!important}
 #cbStage{position:fixed;inset:0;z-index:90;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:18px;
   background:radial-gradient(ellipse at center,rgba(60,35,20,.55),rgba(20,12,8,.82));backdrop-filter:blur(4px);-webkit-backdrop-filter:blur(4px);cursor:pointer;overflow:hidden;animation:cbIn .25s ease}
 #cbStage.flash::after{content:"";position:absolute;inset:0;background:radial-gradient(circle,rgba(255,240,200,.75),transparent 60%);animation:cbFlash .35s ease-out forwards;pointer-events:none}
@@ -1695,6 +1697,8 @@ function notesHTML(open){
         <li>需要剩 <b>2 步</b>，一場最多傳送 <b>2 次</b>；B4 或 B5 被黑暗迷霧封住的回合不能去。這回合若是從 B5 出發，也不能再停回 B5。</li>
         <li>大倉庫一開始有：水4、糧4、刀3、酒2、藥片2、腎上腺素2、手槍1、金條1、霰彈槍1（兩棟共用，剩多少看不到）。</li>
       </ol></div>
+    <div class="nt"><b>鍵盤操作</b>
+      <div>按 <b>↑ ↓ ← →</b> 移動選取框（會亮橘框），按 <b>Enter</b> 確認；<b>Ctrl+Z</b> 回上一步。選到輸入框／下拉選單時按 Enter 進入編輯，按 <b>Esc</b> 離開。用滑鼠點擊時選取框會自動隱藏。</div></div>
     <div class="nt"><b>水塔／糧倉（已修正）</b>
       <div>1F 水塔：水共 <b>8</b> 個；B5 糧倉：糧食共 <b>8</b> 個。兩間都是<b>一次最多抽 3 張</b>。兩棟大樓共用庫存，剩多少看不到。</div></div>
     <div class="nt"><b>負重（已修正）</b>
@@ -2322,6 +2326,65 @@ document.addEventListener("keydown",e=>{
     if(G && G.phase==="action" && ((G.players[ME].t.undo||[]).length)){ e.preventDefault(); act("undo"); }
   }
 });
+// ---------- 鍵盤操作：方向鍵移動選取、Enter 確認 ----------
+const KB={el:null,x:null,y:null,on:false};
+const KB_SEL='button,select,input,summary,.room.click,.floor[data-goto],.floor[data-poisonf],.pick,.flipRow .flipCard,[data-k],[data-sf],[data-u],[data-rk],[data-drop],.card .x';
+function kbScope(){ return $("#cbStage") || $("#modalRoot .modal") || document; }
+function kbList(){
+  // 只選遊戲自己的元素（排除瀏覽器外掛塞進來的按鈕）
+  return [...kbScope().querySelectorAll(KB_SEL)].filter(e=>e.closest("#app,#modalRoot,#cbStage,.sndBtn") && !e.disabled && e.type!=="hidden" && e.getClientRects().length && getComputedStyle(e).visibility!=="hidden");
+}
+const kbCenter=e=>{ const r=e.getBoundingClientRect(); return {x:r.left+r.width/2,y:r.top+r.height/2}; };
+function kbSet(e){
+  document.querySelectorAll(".kbSel").forEach(x=>x.classList.remove("kbSel"));
+  KB.el=e; if(!e) return;
+  e.classList.add("kbSel"); const c=kbCenter(e); KB.x=c.x; KB.y=c.y;
+  try{ e.scrollIntoView({block:"nearest",inline:"nearest"}); }catch(_){}
+}
+// 畫面重畫後原本的元素不見了：選離上次位置最近的
+function kbNearest(list){
+  if(KB.x===null) { const pri=list.find(e=>e.matches(".btn:not(.ghost)")); return pri||list[0]||null; }
+  let best=null,bd=1e18; list.forEach(e=>{ const c=kbCenter(e), d=(c.x-KB.x)**2+(c.y-KB.y)**2; if(d<bd){ bd=d; best=e; } }); return best;
+}
+function kbRestore(){
+  if(!KB.on) return; const list=kbList();
+  if(KB.el && KB.el.isConnected && list.includes(KB.el)){ if(!KB.el.classList.contains("kbSel")) KB.el.classList.add("kbSel"); return; }
+  kbSet(kbNearest(list));
+}
+function kbMove(dir){
+  const list=kbList(); if(!list.length) return;
+  if(!KB.on || !KB.el || !KB.el.isConnected || !list.includes(KB.el)){ KB.on=true; return kbSet(kbNearest(list)); }
+  const a=kbCenter(KB.el), A=KB.el.getBoundingClientRect(), [dx,dy]={ArrowUp:[0,-1],ArrowDown:[0,1],ArrowLeft:[-1,0],ArrowRight:[1,0]}[dir];
+  const gap=(a0,a1,b0,b1)=>Math.max(0,b0-a1,a0-b1);           // 兩段範圍的間距，重疊為 0
+  let best=null,bs=1e18;
+  list.forEach(e=>{ if(e===KB.el) return; const c=kbCenter(e), vx=c.x-a.x, vy=c.y-a.y;
+    const cm=vx*dx+vy*dy, co=Math.abs(dx?vy:vx);
+    if(cm<=4) return;                                           // 要在那個方向上
+    const B=e.getBoundingClientRect();
+    const main=dx?gap(A.left,A.right,B.left,B.right):gap(A.top,A.bottom,B.top,B.bottom);
+    const side=dx?gap(A.top,A.bottom,B.top,B.bottom):gap(A.left,A.right,B.left,B.right);
+    if(side>0 && co>cm*2) return;                               // 太偏的不算（例如按右卻跳到正上方）
+    const sc=main+side*3+co*0.2+(e.classList.contains("sndBtn")?5000:0); /* 右上角固定按鈕排最後 */ if(sc<bs){ bs=sc; best=e; } });
+  if(best) kbSet(best);
+}
+document.addEventListener("keydown",e=>{
+  if(e.ctrlKey||e.metaKey||e.altKey) return;
+  const tg=e.target||{}, typing=/INPUT|SELECT|TEXTAREA/.test(tg.tagName||"");
+  if(typing){ if(e.key==="Escape"){ tg.blur(); KB.on=true; kbSet(tg); } return; } // 輸入中讓瀏覽器自己處理
+  if(e.key.startsWith("Arrow")){ e.preventDefault(); kbMove(e.key); return; }
+  if(e.key==="Enter"){
+    e.preventDefault();
+    // 還沒選任何東西：第一次按 Enter 只亮出選取框，不直接執行
+    if(!KB.on || !KB.el || !KB.el.isConnected || !kbList().includes(KB.el)){ KB.on=true; kbSet(kbNearest(kbList())); return; }
+    const el=KB.el;
+    if(/INPUT|SELECT|TEXTAREA/.test(el.tagName)){ el.focus(); try{ if(el.tagName==="SELECT"&&el.showPicker) el.showPicker(); }catch(_){} return; }
+    el.click();
+  }
+});
+document.addEventListener("pointerdown",()=>{ KB.on=false; kbSet(null); },true);
+// 任何重畫之後把選取框補回來
+new MutationObserver(()=>{ if(KB.on && !KB.raf) KB.raf=requestAnimationFrame(()=>{ KB.raf=0; kbRestore(); }); })
+  .observe(document.body,{childList:true,subtree:true});
 render();
 </script>
 </body>
