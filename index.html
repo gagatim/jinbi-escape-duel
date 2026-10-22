@@ -372,6 +372,16 @@ input,select{background:rgba(255,255,255,.8);color:var(--text);border:1px solid 
 /* 血量表 */
 .hpTable td.down{color:#c4392f} .hpTable td.up{color:#23824a} .hpTable td.dead{color:#7d4bc4} .hpTable td.mut{color:#cdbca6}
 .hpTable th,.hpTable td,.ntab th,.ntab td{border-color:rgba(150,110,70,.18)}
+/* 毒氣層＝淡綠、黑霧層＝淡黑（純色，不用斜線） */
+.floor.poison{background:rgba(95,190,120,.20);border-color:rgba(60,160,90,.55)}
+.floor.poison .fl{color:#2e8a4e} .skull{color:#2e8a4e;font-weight:700}
+.floor.fogfloor{background:rgba(40,32,26,.14);border-color:rgba(40,32,26,.30)}
+.floor.fogfloor .fl{color:#5a4d42}
+.floor.poison.fogfloor{background:linear-gradient(90deg,rgba(95,190,120,.22),rgba(40,32,26,.14))}
+.room.fog{background:rgba(40,32,26,.10);border-color:rgba(40,32,26,.22);color:#8c7f73}
+.notice.fognote{background:rgba(40,32,26,.08);border-color:rgba(40,32,26,.22);border-top-color:rgba(255,255,255,.8);color:#3b2a1d}
+.floor.pickp{border-color:rgba(60,160,90,.30)}
+.floor.pickp:hover{background:rgba(95,190,120,.18);border-color:rgba(60,160,90,.7)}
 /* 抽卡的卡牌維持深色（像實體遊戲卡），在淺色背景上更醒目 */
 .flipCard{--panel:#1f1a17;--panel2:#2a231f;--line:#3d332c;--text:#eee3d6;--ink:#eee3d6;--muted:#a8998a;--cyan:#7fe3f5;color:#eee3d6}
 .flipCard .flipFace{box-shadow:0 8px 20px rgba(80,50,20,.25)}
@@ -655,7 +665,6 @@ function apply(G,pi,a,x){
       if(!has(p,"gold")) fail("你沒有金條");
       const s=G.stock[p.room], deck=[];
       Object.keys(s).forEach(k=>{ if(k!=="gold") for(let i=0;i<s[k];i++) deck.push(k); });
-      if(carryCap(p)-(p.inv.length-1)<1) fail("負重不足");
       if(!deck.length){ noteExact(G,p,p.room,[]); t.goldUsed=true; log(G,"你想用金條在「"+R.n+"」多抽一張，但已經沒有東西了（金條沒有花掉）。",pi); return; }
       const it=deck[Math.floor(G.rand()*deck.length)];
       takeItem(p,"gold"); G.discard.push("gold"); s[it]--; p.inv.push(it); t.goldUsed=true; noteTook(p,p.room,it);
@@ -668,7 +677,6 @@ function apply(G,pi,a,x){
       if(!has(p,"recycle")) fail("你沒有回收裝置");
       if(t.recycled) fail("回收裝置每回合限用1次");
       if(!G.discard.length) fail("棄牌堆是空的");
-      if(carryRoom(p)<1) fail("負重已滿");
       const i=Math.floor(G.rand()*G.discard.length), it=G.discard.splice(i,1)[0];
       p.inv.push(it); t.recycled=true;
       flash(G,p,"回收裝置拿回",[it]);
@@ -689,7 +697,6 @@ function apply(G,pi,a,x){
       if(!p.alive) fail("暗影沒有道具");
       const i=x.idx|0;
       if(i<0||i>=p.inv.length) fail("道具不存在");
-      if(p.inv[i]==="dimpocket" && p.inv.length-1>p.carry) fail("丟掉次元口袋後會超過負重（"+p.carry+"），請先丟掉其他道具");
       const it=p.inv.splice(i,1)[0]; G.discard.push(it);
       log(G,"你丟掉了 "+ITEMS[it].n+"。",pi);
       return;
@@ -698,6 +705,7 @@ function apply(G,pi,a,x){
       if(t.poison===null) fail("請先投毒（或選擇不投毒）");
       if(t.pending) fail("請先處理抽到的卡");
       if(t.mustMove && p.floor===t.startFloor) fail("每回合不能停留在出發的樓層（"+fl(p.floor)+"），請先移動");
+      if(p.alive && carryRoom(p)<0) fail("背包超過負重（"+p.inv.length+"/"+p.carry+"），請先丟掉 "+(-carryRoom(p))+" 件道具");
       if(fogBlocked(G,p,p.floor)) fail(fl(p.floor)+" 被黑暗迷霧籠罩，本回合不能停留，請繼續移動");
       if(!t.committed && p.alive){ t.committed=true; p.room=null; }
       t.ended=true;
@@ -760,7 +768,6 @@ function roomAction(G,pi,x){
     if(v.some(n=>!(n>=0))) fail("數值不正確");
     if(v[0]+v[1]+v[2]!==total) fail("總點數必須是 "+total);
     if(v[1]<1) fail("速度最低 1 點");
-    if(!has(p,"dimpocket") && v[2]<p.inv.length) fail("負重不能低於目前道具數（"+p.inv.length+"）");
     [p.power,p.speed,p.carry]=v; t.roomUsed=true;
     log(G,"你在操作室重新分配：力量"+v[0]+"／速度"+v[1]+"／負重"+v[2]+"。",pi);
     return;
@@ -775,8 +782,7 @@ function keepCards(G,pi,x){
   if(idx.filter(i=>ITEMS[pd.cards[i]].sp).length>pd.keep) fail("奇物最多只能帶走 "+pd.keep+" 件");
   const kept=idx.map(i=>pd.cards[i]);
   // 次元口袋本身也在這批裡的話，拿到後負重就無上限
-  const room=kept.includes("dimpocket")||has(p,"dimpocket")?Infinity:carryRoom(p);
-  if(kept.length>room) fail("負重不足，最多再拿 "+room+" 張");
+  // 撿道具不受負重限制；超過的部分在按「結束回合」時要丟掉
   const s=G.stock[pd.room];
   pd.cards.forEach((c,i)=>{ if(!idx.includes(i)) s[c]=(s[c]||0)+1; });
   kept.forEach(c=>{ p.inv.push(c); noteTook(p,pd.room,c); });
@@ -1072,17 +1078,18 @@ function aiKeep(G,pi){
     const c=pd.cards[i];
     if(ITEMS[c].sp && taken.filter(x=>ITEMS[x].sp).length>=pd.keep) continue;
     if(aiItemValue(G,p,c,taken)<=0.3) continue;
-    const pocket=has(p,"dimpocket")||taken.includes("dimpocket")||c==="dimpocket";
-    if(!pocket && p.inv.length+pick.length>=p.carry){
-      // 背包滿：丟掉最不值錢的道具換更好的
-      let wi=-1, wv=Infinity;
-      p.inv.forEach((it,j)=>{ const v=aiItemValue(G,p,it); if(v<wv){ wv=v; wi=j; } });
-      if(wi<0 || aiItemValue(G,p,c,taken)<=wv+1) continue;
-      A("drop",{idx:wi});
-    }
     pick.push(i); taken.push(c);
   }
   if(!A("keep",{idx:pick})) A("keep",{idx:[]});
+}
+// 結束回合前：超過負重就丟最不值錢的道具
+function aiTrim(G,pi){
+  const p=G.players[pi];
+  while(p.alive && carryRoom(p)<0){
+    let wi=0, wv=Infinity;
+    p.inv.forEach((it,j)=>{ if(it==="dimpocket") return; const v=aiItemValue(G,p,it); if(v<wv){ wv=v; wi=j; } });
+    try{ apply(G,pi,"drop",{idx:wi}); }catch(e){ break; }
+  }
 }
 // 保險：如果沒走到計畫的樓層，就走到最近一個可以停留的樓層
 function aiSettleFloor(G,pi){
@@ -1126,7 +1133,7 @@ function aiStep(G,pi){
     const w=aiOppFloorWeights(G,pi), f=w.indexOf(Math.max(...w));
     A("rocket",{floor:f});
   }
-  if(has(p,"recycle") && G.discard.length && carryRoom(p)>0) A("recycle");
+  if(has(p,"recycle") && G.discard.length) A("recycle");
   const plan=aiPlan(G,pi);
   if(plan.tp){ while(p.floor!==TELEPORT_FLOOR && t.steps>0){ if(!A("move",{dir:TELEPORT_FLOOR<p.floor?-1:1})) break; } A("teleport",{floor:WAREHOUSE_FLOOR}); }
   else while(p.floor!==plan.floor && t.steps>0){ if(!A("move",{dir:plan.floor<p.floor?-1:1})) break; }
@@ -1143,6 +1150,7 @@ function aiStep(G,pi){
     else if(R.type==="gene"||R.type==="canteen") A("room",{});
     if(R.draw && !R.noGold && has(p,"gold") && G.round<ROUNDS && aiRoomValue(G,p,p.room)>=4) A("gold",{});
   }
+  aiTrim(G,pi);
   A("endTurn");
   return true;
 }
@@ -1400,7 +1408,7 @@ function gameHTML(){
     ${buildingHTML(ME)}
     ${buildingHTML(1-ME)}
     <div class="side"><div class="actWrap">${actionHTML()}</div>
-      <div class="panel bagPanel"><h3>背包 <span class="muted" style="font-size:12px">${me.inv.length}/${has(me,"dimpocket")?"∞":me.carry}</span></h3>
+      <div class="panel bagPanel"><h3>背包 <span class="muted" style="font-size:12px">${me.inv.length}/${has(me,"dimpocket")?"∞":me.carry}</span>${me.alive&&carryRoom(me)<0?` <span style="font-size:12.5px;color:var(--bad)">超重！結束回合前要丟掉 ${-carryRoom(me)} 件（按道具旁的 ✕）</span>`:""}</h3>
         <div class="inv">${me.inv.length?me.inv.map((it,i)=>itemCard(it,i,G.phase==="action"&&!me.t.ended)).join(""):'<span class="muted">空</span>'}</div>
         ${itemButtonsHTML()}</div>
       <div class="panel logPanel"><h3>紀錄</h3><div class="log" id="log">${G.log.filter(l=>l.to===undefined||l.to===ME).slice(-120).map(l=>
@@ -1450,7 +1458,9 @@ function notesHTML(){
         <li>大倉庫一開始有：水4、糧4、刀3、酒2、藥片2、腎上腺素2、手槍1、金條1、霰彈槍1（兩棟共用，剩多少看不到）。</li>
       </ol></div>
     <div class="nt"><b>水塔／糧倉（已修正）</b>
-      <div>1F 水塔：水共 <b>8</b> 個；B5 糧倉：糧食共 <b>8</b> 個。兩間都是<b>一次最多抽 3 張</b>（仍受負重限制）。兩棟大樓共用庫存，剩多少看不到。</div></div>
+      <div>1F 水塔：水共 <b>8</b> 個；B5 糧倉：糧食共 <b>8</b> 個。兩間都是<b>一次最多抽 3 張</b>。兩棟大樓共用庫存，剩多少看不到。</div></div>
+    <div class="nt"><b>負重（已修正）</b>
+      <div>搜索、金條多抽、回收裝置拿到的道具<b>都可以先全部拿</b>，不受負重限制；按<b>「結束回合」</b>時如果超過負重，要先丟到負重以內（按背包道具旁的 ✕）。垃圾場的奇物仍然最多帶走 2 件。</div></div>
     <div class="nt"><b>防毒面具（已修正）</b>
       <div>放在背包自動生效、不會消耗：毒氣傷害 <b>-2</b>（最低 0）。只擋毒氣，戰鬥、火箭筒、暗影、飢餓照扣。全場只有 1 個，在 B5 垃圾場。</div>
       <table class="ntab"><tr><th>回合</th><td>1</td><td>2</td><td>3</td><td>4</td><td>5</td><td>6</td></tr>
@@ -1459,7 +1469,7 @@ function notesHTML(){
     <div class="nt"><b>黑暗迷霧</b>
       <ul>
         <li>前 <b>3</b> 回合，每回合開始隨機封鎖 <b>2 層樓</b>（2F～B6，B7 停屍間不會被封），第 4 回合起散去。</li>
-        <li>兩棟大樓封的樓層相同，回合開始就公開：那層會變成紫灰斜紋、標上 ☁，行動欄也會列出。</li>
+        <li>兩棟大樓封的樓層相同，回合開始就公開：那層會變成淡黑色、標上 ☁，行動欄也會列出。</li>
         <li>被封的樓層<b>可以經過、不能停留</b>，那層的房間本回合都不能用；<b>B4</b> 被封時不能傳送，<b>B5</b> 被封時大倉庫也去不了。</li>
         <li>如果迷霧剛好把你這回合能走到的樓層都封住，那回合可以停在原地，不會被困住。</li>
       </ul></div>
@@ -1512,7 +1522,7 @@ function buildingHTML(pi){
       <span class="fl">${fogF?"☁":""}${name}</span><div class="rooms">${rooms}${isP?'<span class="skull">☠毒</span>':""}${tok}</div></div>`;
   }).join("");
   return `<div class="panel bld ${mine?"me":"opp"}"><h3>${mine?"你的大樓":esc(p.name)+" 的大樓"}
-    <span class="tag">${mine?"紫色＝毒氣層；亮框＝這回合走得到，點一下就移動":(G.phase==="action"&&!t.ended&&t.poison===null?"👉 點一層樓投毒":"標記＝最後一次看到對手的位置（戰鬥等才會更新）；虛線＝你本回合要放毒的樓層")}</span></h3>${rows}</div>`;
+    <span class="tag">${mine?"淡綠＝毒氣層；淡黑＝黑霧；亮框＝這回合走得到，點一下就移動":(G.phase==="action"&&!t.ended&&t.poison===null?"👉 點一層樓投毒":"標記＝最後一次看到對手的位置（戰鬥等才會更新）；虛線＝你本回合要放毒的樓層")}</span></h3>${rows}</div>`;
 }
 // ① 投毒 → ② 移動 → ③ 進房間 → ④ 結束回合：做完的打勾、目前這步發亮
 function stepperHTML(me){
@@ -1605,6 +1615,7 @@ function bindGame(){
     const me=G.players[ME];
     if(fogBlocked(G,me,me.floor)){ toast(fl(me.floor)+" 被黑暗迷霧籠罩，不能停在這層，請繼續移動"); return; }
     if(me.t.mustMove && me.floor===me.t.startFloor){ toast("每回合不能停留在出發的樓層，請先移動"); return; }
+    if(me.alive && carryRoom(me)<0){ toast("背包超過負重，請先丟掉 "+(-carryRoom(me))+" 件道具（按道具旁的 ✕）"); return; }
     if(me.alive && !me.t.committed) confirmModal("你還沒進房間，確定直接結束回合？",()=>act("endTurn"));
     else act("endTurn");
   });
@@ -1753,7 +1764,7 @@ function renderModal(){
     const A=UI.re, total=me.power+me.speed+me.carry, left=total-A.power-A.speed-A.carry;
     const row=(k,l)=>`<div class="statrow"><b>${l}</b><button class="btn small ghost" data-rk="${k}" data-d="-1">−</button><span class="v">${A[k]}</span><button class="btn small ghost" data-rk="${k}" data-d="1">＋</button><span></span></div>`;
     modal(`<h3>操作室：重新分配（共 ${total} 點，剩 ${left}）</h3>${row("power","力量")}${row("speed","速度")}${row("carry","負重")}
-      <div class="muted" style="font-size:12px">負重不能低於目前道具數（${me.inv.length}）。本回合剩餘步數不會改變。</div>
+      <div class="muted" style="font-size:12px">本回合剩餘步數不會改變。負重調低後如果超過，結束回合前要丟掉多的道具。</div>
       <div class="row" style="margin-top:10px"><button class="btn" id="reOk" ${left?"disabled":""}>確認</button><button class="btn ghost" id="mx">取消</button></div>`);
     document.querySelectorAll("[data-rk]").forEach(b=>b.onclick=()=>{
       const k=b.dataset.rk, d=+b.dataset.d;
@@ -1771,19 +1782,18 @@ function drawModal(pd){
   runFlip(key,pd.cards,()=>drawModal(pd));
   const F=UI.flip, done=F.done;
   const pocket=()=>has(me,"dimpocket")||UI.sel.some(i=>pd.cards[i]==="dimpocket");
-  const roomLeft=()=>pocket()?Infinity:carryRoom(me)-UI.sel.length;
+  const roomLeft=()=>pocket()?Infinity:carryRoom(me)-UI.sel.length; // 只是提示用：撿道具不受負重限制
   const spSel=()=>UI.sel.filter(i=>ITEMS[pd.cards[i]].sp).length;
   const isDump=pd.keep<99;
   const whyNot=i=>{
     const c=pd.cards[i];
     if(ITEMS[c].sp && spSel()>=pd.keep) return "奇物最多只能帶走 "+pd.keep+" 件";
-    if(c!=="dimpocket" && roomLeft()<=0) return "負重不足";
     return "";
   };
   const left=roomLeft();
   modal(`<h3>${done?"在「"+ROOMS[pd.room].n+"」搜索到：":"在「"+ROOMS[pd.room].n+"」搜索中…"}</h3>
     <div class="flipRow">${pd.cards.map((c,i)=>flipCardHTML(c,i,i<F.count,done?" pickable"+(UI.sel.includes(i)?" chosen":""):"")).join("")}</div>
-    ${done?`<div class="muted" style="font-size:13px">點卡片選擇要帶走的（負重還剩 ${left===Infinity?"∞":left}${isDump?`，奇物最多 ${pd.keep} 件`:""}）；沒選的放回房間。</div>
+    ${done?`<div class="muted" style="font-size:13px">點卡片選擇要帶走的${isDump?`（奇物最多 ${pd.keep} 件）`:""}，沒選的放回房間。${left===Infinity?"":left<0?`<b style="color:var(--bad)">拿完會超過負重 ${-left} 件，結束回合前要丟掉。</b>`:`負重還剩 ${left} 格（超過也可以拿，結束回合前丟掉就好）。`}</div>
     <div class="row" style="margin-top:10px"><button class="btn" id="kOk">帶走選取的 ${UI.sel.length} 張</button><button class="btn ghost" id="kAll">盡量全選</button></div>`
     :`<button class="btn small" id="flipSkip">跳過動畫</button>`}
     <label class="muted" style="display:block;margin-top:8px;font-size:12px"><input type="checkbox" id="flipOff" ${animOff()?"checked":""}> 以後不再播放抽卡動畫</label>
