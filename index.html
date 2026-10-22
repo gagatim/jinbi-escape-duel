@@ -90,6 +90,15 @@ h3{margin:0 0 8px;font-size:16px}
 .report .rl.bad{color:#ff8f86}
 .report .rl.good{color:#8fe3a8}
 .report .hpchip{background:var(--panel2);border:1px solid var(--line);border-radius:14px;padding:3px 10px;font-weight:700}
+.hpScroll{overflow-x:auto}
+.hpTable table{border-collapse:collapse;font-size:14px;min-width:100%}
+.hpTable th,.hpTable td{border:1px solid var(--line);padding:6px 10px;text-align:center;white-space:nowrap}
+.hpTable tr:first-child th{color:var(--muted);font-weight:600;font-size:12.5px}
+.hpTable th.me{color:var(--me);text-align:left} .hpTable th.opp{color:var(--opp);text-align:left}
+.hpTable td{font-weight:800}
+.hpTable td small{font-size:11px;margin-left:3px;font-weight:600}
+.hpTable td.down{color:#ff8f86} .hpTable td.up{color:#8fe3a8}
+.hpTable td.dead{color:#c9a6ff} .hpTable td.mut{color:var(--line)}
 .room.fog{background:repeating-linear-gradient(135deg,#2b2733 0 6px,#221f29 6px 12px);border-color:#5a5368;color:#8f88a0;text-decoration:line-through;cursor:not-allowed}
 .tok{font-size:12px;font-weight:800;border-radius:10px;padding:1px 7px;margin-left:auto}
 .tok.me{background:var(--me);color:#06141c}
@@ -310,7 +319,7 @@ function newPlayer(name,id){
 }
 function newGame(names){
   return {v:1,round:0,phase:"setup",players:names.map((n,i)=>newPlayer(n,i)),
-    opts:{dice:true},first:null,dice:null,fog:[],stock:initialStock(),poison:[[],[]],discard:[],log:[],report:[],reveal:[null,null],revealRound:[0,0],result:null,rand:Math.random};
+    opts:{dice:true},first:null,dice:null,fog:[],hpHist:[],stock:initialStock(),poison:[[],[]],discard:[],log:[],report:[],reveal:[null,null],revealRound:[0,0],result:null,rand:Math.random};
 }
 // ---------- helpers ----------
 const opp=pi=>1-pi;
@@ -650,14 +659,18 @@ function deathCheck(G,add){
     add("💀 "+p.name+" 死亡（死亡時武力 "+p.deathPower+"），遺物落入 B7 停屍間，化為暗影…");
   });
 }
+// 血量歷史（給下方表格用）：每次都是公開資訊
+function recordHP(G,label){ (G.hpHist=G.hpHist||[]).push({label,v:G.players.map(p=>({hp:p.hp,alive:p.alive,drain:p.drain}))}); }
 // 開局：兩人若選了同一個起始樓層，第1回合前先打一場
 function openingEncounter(G){
   const P=G.players;
+  recordHP(G,"開始");
   if(P[0].floor!==P[1].floor){ startRound(G); return; }
   const add=(s,to)=>G.report.push({text:s,to});
   G.report=[];
   add("🚪 開局兩人都選在 "+fl(P[0].floor)+" 出發，一見面就打起來了！");
   fight(G,add); deathCheck(G,add);
+  recordHP(G,"開局遭遇");
   P.forEach(p=>add("❤️ "+p.name+"："+(p.alive?"HP "+p.hp:"暗影")));
   G.report.forEach(e=>log(G,e.text,e.to));
   G.phase="report"; P.forEach(p=>{ p.ready=false; });
@@ -763,6 +776,7 @@ function finishSettle(G){
     g.alive=true; g.hp=4; g.drain=0; g.deathPower=0; reveal(G,g);
     add("✨ "+g.name+" 的暗影吸滿4血，在 "+fl(g.floor)+" 復活！（HP 4）");
   });
+  recordHP(G,"第"+G.round+"回合");
   P.forEach(p=>add("❤️ "+p.name+"："+(p.alive?"HP "+p.hp:"暗影（累積 "+p.drain+"/4）")));
   G.report.forEach(e=>log(G,e.text,e.to));
   G.phase="report";
@@ -776,6 +790,7 @@ function endGame(G){
       if(g){ const before=p.hp; p.hp=Math.min(MAXHP,p.hp+g); log(G,"🪙 "+p.name+" 以 "+g+" 根金條換血："+before+" → "+p.hp); }
     }
   });
+  if(P.some(p=>p.alive&&count(p,"gold"))) recordHP(G,"最終（含金條）");
   const [a,b]=P, why=[];
   let w=-1;
   if(a.alive!==b.alive){ w=a.alive?0:1; why.push("只有 "+P[w].name+" 存活"); }
@@ -1243,7 +1258,36 @@ function gameHTML(){
         `<div class="${l.to!==undefined?"pv":""} ${/^── /.test(l.text)?"rd":""}">${esc(l.text)}</div>`).join("")}</div></div>
     </div>
   </div>
+  ${hpTableHTML()}
   ${notesHTML()}`;
+}
+// 每位玩家：開始血量＋每回合結束血量
+function hpTableHTML(){
+  const H=G.hpHist||[];
+  const cols=[];
+  const find=l=>H.find(h=>h.label===l);
+  cols.push(find("開始"));
+  if(find("開局遭遇")) cols.push(find("開局遭遇"));
+  for(let r=1;r<=ROUNDS;r++) cols.push(find("第"+r+"回合")||{label:"第"+r+"回合",empty:true});
+  if(find("最終（含金條）")) cols.push(find("最終（含金條）"));
+  const head=cols.map(c=>`<th>${c?esc(c.label):"開始"}</th>`).join("");
+  const rows=G.players.map((p,i)=>{
+    let prev=null;
+    const tds=cols.map(c=>{
+      if(!c) return `<td>${MAXHP}</td>`;
+      if(c.empty) return `<td class="mut">—</td>`;
+      const v=c.v[i];
+      const val=v.alive?v.hp:0;
+      const d=prev===null?0:val-prev; prev=val;
+      const cls=!v.alive?"dead":d<0?"down":d>0?"up":"";
+      const txt=v.alive?v.hp:`👻${v.drain}/4`;
+      return `<td class="${cls}">${txt}${d?`<small>${d>0?"+":""}${d}</small>`:""}</td>`;
+    }).join("");
+    return `<tr><th class="${i===ME?"me":"opp"}">${esc(p.name)}${i===ME?"（你）":""}</th>${tds}</tr>`;
+  }).join("");
+  return `<div class="panel hpTable" style="margin-top:12px"><h3>❤️ 血量紀錄</h3>
+    <div class="hpScroll"><table><tr><th></th>${head}</tr>${rows}</table></div>
+    <div class="muted" style="font-size:12px;margin-top:6px">每回合結算後的血量（死亡為暗影，顯示累積吸血數）。紅色＝比上一欄少，綠色＝比上一欄多。</div></div>`;
 }
 // 遊戲畫面下方的「特別說明」
 function notesHTML(){
