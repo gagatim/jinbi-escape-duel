@@ -265,7 +265,7 @@ function newPlayer(name,id){
 }
 function newGame(names){
   return {v:1,round:0,phase:"setup",players:names.map((n,i)=>newPlayer(n,i)),
-    stock:initialStock(),poison:[[],[]],discard:[],log:[],report:[],reveal:[null,null],revealRound:[0,0],result:null,rand:Math.random};
+    opts:{},first:null,dice:null,stock:initialStock(),poison:[[],[]],discard:[],log:[],report:[],reveal:[null,null],revealRound:[0,0],result:null,rand:Math.random};
 }
 // ---------- helpers ----------
 const opp=pi=>1-pi;
@@ -316,6 +316,13 @@ function startRound(G){
   G.round++; G.phase="action"; G.report=[];
   const drop=AIRDROP[G.round-1];
   if(drop){ G.stock.heli[drop]=(G.stock.heli[drop]||0)+1; }
+  // 擲骰比大小決定先後（同點重擲）：後手要等先手結束回合才能搜索房間
+  G.first=null; G.dice=null;
+  if(G.opts && G.opts.dice){
+    const rolls=[]; let a,b;
+    do{ a=1+Math.floor(G.rand()*6); b=1+Math.floor(G.rand()*6); rolls.push([a,b]); }while(a===b);
+    G.first=a>b?0:1; G.dice=rolls;
+  }
   log(G,"── 第 "+G.round+" 回合開始 ── 停機坪空投："+ITEMS[drop].ic+ITEMS[drop].n+"；本回合毒氣傷害 "+POISON_DMG[G.round-1]);
   G.players.forEach(p=>{
     p.t={poison:null,steps:p.alive?moveSpeed(p):p.ghostSpeed,committed:false,roomUsed:false,pending:null,
@@ -324,7 +331,10 @@ function startRound(G){
     // 行動階段對手看到的血量／素質：回合開始時的快照（避免從即時變化推測位置，例如基因庫扣血）
     p.pub={hp:p.hp,power:p.power,speed:p.speed,carry:p.carry,alive:p.alive,drain:p.drain};
   });
+  if(G.dice) log(G,"🎲 擲骰比大小："+G.dice.map(([a,b])=>G.players[0].name+" "+a+" vs "+G.players[1].name+" "+b).join("（同點重擲）→ ")+"，"+G.players[G.first].name+" 先行動");
 }
+// 後手在先手結束回合前不能搜索房間／用金條
+function waitingFirst(G,pi){ return G.first!==null && G.first!==undefined && G.first!==pi && !G.players[G.first].t.ended; }
 
 // ---------- 動作入口 ----------
 function apply(G,pi,a,x){
@@ -335,6 +345,7 @@ function apply(G,pi,a,x){
     const v=[x.power,x.speed,x.carry].map(n=>Math.floor(Number(n)));
     if(v.some(n=>!(n>=0))) fail("數值不正確");
     if(v[0]+v[1]+v[2]!==STAT_POINTS) fail("必須剛好分配 "+STAT_POINTS+" 點");
+    if(v[1]<1) fail("速度最低 1 點");
     const sf=x.floor|0;
     if(!START_FLOORS.includes(sf)) fail("起始樓層只能選 1F、B1、B2");
     [p.power,p.speed,p.carry]=v; p.floor=sf; p.ready=true;
@@ -345,7 +356,7 @@ function apply(G,pi,a,x){
   }
   if(a==="rematch"){
     if(G.phase!=="end") fail("遊戲尚未結束");
-    const fresh=newGame(G.players.map(q=>q.name));
+    const fresh=newGame(G.players.map(q=>q.name)); fresh.opts=G.opts||{};
     Object.keys(G).forEach(k=>delete G[k]); Object.assign(G,fresh);
     return;
   }
@@ -405,12 +416,15 @@ function apply(G,pi,a,x){
       t.committed=true;
       return;
     }
-    case "room": return roomAction(G,pi,x);
+    case "room":
+      if(waitingFirst(G,pi)) fail("本回合由 "+G.players[G.first].name+" 先行動，等他結束回合後才能使用房間");
+      return roomAction(G,pi,x);
     case "keep": return keepCards(G,pi,x);
     case "gold": {
       if(!t.committed || !p.room) fail("要先停留在房間");
       const R=ROOMS[p.room];
       if(!R.draw || R.noGold) fail("這個房間不能用金條");
+      if(waitingFirst(G,pi)) fail("本回合由 "+G.players[G.first].name+" 先行動，等他結束回合後才能用金條");
       if(t.pending) fail("請先處理抽到的卡");
       if(t.goldUsed) fail("金條每回合限用1次");
       if(!has(p,"gold")) fail("你沒有金條");
@@ -519,6 +533,7 @@ function roomAction(G,pi,x){
     const total=p.power+p.speed+p.carry;
     if(v.some(n=>!(n>=0))) fail("數值不正確");
     if(v[0]+v[1]+v[2]!==total) fail("總點數必須是 "+total);
+    if(v[1]<1) fail("速度最低 1 點");
     if(!has(p,"dimpocket") && v[2]<p.inv.length) fail("負重不能低於目前道具數（"+p.inv.length+"）");
     [p.power,p.speed,p.carry]=v; t.roomUsed=true;
     log(G,"你在操作室重新分配：力量"+v[0]+"／速度"+v[1]+"／負重"+v[2]+"。",pi);
@@ -964,13 +979,14 @@ function joinGame(kind,code,name){
 // 單人對戰 AI：AI 當玩家2，在本機用同一套引擎行動
 function startAI(name){
   ME=0; UI.ai=true; NET={send(){}};
-  G=newGame([name,"AI"]); netStatus("對戰 AI");
+  G=newGame([name,"AI"]); G.opts.dice=true; netStatus("對戰 AI");
   broadcast();
 }
 function scheduleAI(){
   clearTimeout(UI.aiTimer);
   if(!UI.ai || !G) return;
-  const delay=G.phase==="action"?1500:G.phase==="items"?700:G.phase==="setup"?400:300;
+  if(G.phase==="action" && waitingFirst(G,1)) return; // AI 後手：等玩家結束回合
+  const delay=G.phase==="action"?1200:G.phase==="items"?700:G.phase==="setup"?400:300;
   UI.aiTimer=setTimeout(()=>{ G.rand=Math.random; if(aiStep(G,1)) broadcast(); },delay);
 }
 function broadcast(){
@@ -1025,7 +1041,7 @@ function lobbyHTML(){
 function rulesHTML(){
   return `<h3>規則摘要</h3>
   <div>・開局把 <b>10 點</b> 分給 力量／速度／負重；HP 10。兩人各在自己的大樓（2F～B7），各自秘密選 <b>1F／B1／B2</b> 出發，選到同一層開局就先打一場。房間物資兩棟<b>共用庫存</b>，剩多少<b>看不到</b>，要搜了才知道。</div>
-  <div>・每回合：先<b>投毒</b>（選對方大樓一層）→ 用速度步數上下移動（<b>不能停在出發的樓層</b>）→ 停在一個房間使用功能 → 結束回合。</div>
+  <div>・速度最低 1 點。對戰 AI 時每回合<b>擲骰比大小</b>，大的先行動（同點重擲），後手要等先手結束回合才能使用房間。<br>・每回合：先<b>投毒</b>（選對方大樓一層）→ 用速度步數上下移動（<b>不能停在出發的樓層</b>）→ 停在一個房間使用功能 → 結束回合。</div>
   <div>・對手位置是隱藏的，只有<b>戰鬥</b>、暗影吸血、被火箭筒命中或死亡時才會知道對方在哪一層。</div>
   <div>・結算順序：<b>暗影</b>（死者與活人同樓層：活人-2、暗影+2，累積4復活）→ <b>戰鬥</b>（同樓層比武力，差值為傷害；持槍者無視對方武力直接造成全部武力傷害）→ 火箭筒 → <b>毒氣</b>（各自大樓，傷害 1/2/2/3/3/4）→ <b>飢餓</b>（第2回合起付1水1糧，每缺一項-1）→ 使用藥片／腎上腺素／酒 → 死亡判定。</div>
   <div>・共 <b>6 回合</b>，比最後血量（金條每根+1血，上限10），同血比武力；兩人都死比死亡時武力。</div>`;
@@ -1047,7 +1063,7 @@ function setupHTML(){
   return `<div class="lobby"><div class="panel">
     <h3>${esc(me.name)} 的素質分配</h3>
     <div class="muted">對手：${esc(op.name)}　剩餘點數：<b style="color:var(--gold)">${left}</b></div>
-    ${row("power","力量","戰鬥武力")}${row("speed","速度","每回合可移動樓層數")}${row("carry","負重","可攜帶道具數")}
+    ${row("power","力量","戰鬥武力")}${row("speed","速度","每回合可移動樓層數（最低1）")}${row("carry","負重","可攜帶道具數")}
     <div style="margin:8px 0 4px"><b>起始樓層</b> <span class="muted" style="font-size:12px">（對手看不到；兩人選同一層會在開局直接打一場）</span></div>
     <div class="row" style="margin-bottom:10px">${START_FLOORS.map(f=>`<button class="btn small ${A.floor===f?"":"ghost"}" data-sf="${f}">${fl(f)}</button>`).join("")}</div>
     <button class="btn" id="setOk" ${left!==0?"disabled":""}>確認</button></div>
@@ -1056,7 +1072,7 @@ function setupHTML(){
 function bindSetup(){
   document.querySelectorAll("[data-k]").forEach(b=>b.onclick=()=>{
     const A=UI.alloc, k=b.dataset.k, d=+b.dataset.d, left=10-A.power-A.speed-A.carry;
-    if(d>0&&left<=0) return; if(d<0&&A[k]<=0) return;
+    if(d>0&&left<=0) return; if(d<0&&A[k]<=(k==="speed"?1:0)) return;
     A[k]+=d; render();
   });
   document.querySelectorAll("[data-sf]").forEach(b=>b.onclick=()=>{ UI.alloc.floor=+b.dataset.sf; render(); });
@@ -1130,8 +1146,10 @@ function actionHTML(){
   }
   if(G.phase==="report"||G.phase==="items")
     return `<div class="panel"><h3>結算中</h3><div class="muted">${G.phase==="items"?(t.itemsDone?"等待 "+esc(op.name)+" 決定是否使用道具…":"請決定是否使用道具"):(me.ready?"等待 "+esc(op.name)+"…":"查看結算報告")}</div></div>`;
-  if(t.ended) return `<div class="panel"><h3>已結束回合</h3><div class="muted">等待 ${esc(op.name)} 行動…</div></div>`;
-  let h=`<div class="panel"><h3>${me.alive?"行動":"暗影行動"}</h3>`;
+  const DICE="⚀⚁⚂⚃⚄⚅";
+  const diceNote=G.dice?`<div class="notice" style="margin-bottom:8px">🎲 ${G.dice.map(([a,b])=>`${ME===0?"你":esc(G.players[0].name)} ${DICE[a-1]}${a} vs ${ME===1?"你":esc(G.players[1].name)} ${DICE[b-1]}${b}`).join("（同點重擲）→ ")}<br><b>${G.first===ME?"你先行動":esc(op.name)+" 先行動"}</b>${waitingFirst(G,ME)?"：等它結束回合後你才能搜索房間（投毒、移動可以先做）":""}</div>`:"";
+  if(t.ended) return `<div class="panel">${diceNote}<h3>已結束回合</h3><div class="muted">等待 ${esc(op.name)} 行動…</div></div>`;
+  let h=`<div class="panel">${diceNote}<h3>${me.alive?"行動":"暗影行動"}</h3>`;
   if(t.poison===null){
     const opts=FLOORS.map((n,f)=>G.poison[1-ME].includes(f)?"":`<button class="btn small ghost" data-poison="${f}">${n}</button>`).join("");
     return h+`<div class="notice">第1步：選擇 ${esc(op.name)} 大樓要放毒的樓層（結算時生效）</div>
@@ -1149,10 +1167,11 @@ function actionHTML(){
     const R=ROOMS[me.room];
     h+=`<div class="notice" style="margin:8px 0">你在 <b>${fl(me.floor)} ${R.n}</b>：${esc(R.d)}</div>`;
     if(!t.roomUsed && R.type!=="teleport"){
-      if(R.type==="control") h+=`<button class="btn small" id="ctrl">使用控制室</button>`;
-      else if(R.type==="respec") h+=`<button class="btn small" id="respec">重新分配素質</button>`;
-      else if(R.type==="gene") h+=`<button class="btn small" id="roomGo">使用基因庫（-2血）</button>`;
-      else h+=`<button class="btn small" id="roomGo">${R.draw?"搜索房間":"使用"}</button>`;
+      const wt=waitingFirst(G,ME), dis=wt?"disabled":"";
+      if(R.type==="control") h+=`<button class="btn small" id="ctrl" ${dis}>${wt?"等對手先行動…":"使用控制室"}</button>`;
+      else if(R.type==="respec") h+=`<button class="btn small" id="respec" ${dis}>${wt?"等對手先行動…":"重新分配素質"}</button>`;
+      else if(R.type==="gene") h+=`<button class="btn small" id="roomGo" ${dis}>${wt?"等對手先行動…":"使用基因庫（-2血）"}</button>`;
+      else h+=`<button class="btn small" id="roomGo" ${waitingFirst(G,ME)?"disabled":""}>${waitingFirst(G,ME)?"等對手先行動…":R.draw?"搜索房間":"使用"}</button>`;
     }
     if(R.draw && !R.noGold && has(me,"gold") && !t.goldUsed && !t.pending){
       h+=`<div class="row" style="margin-top:8px"><button class="btn small ghost" id="goldDraw">🪙 用1根金條多抽1張（隨機）</button></div>`;
@@ -1337,7 +1356,7 @@ function renderModal(){
       <div class="row" style="margin-top:10px"><button class="btn" id="reOk" ${left?"disabled":""}>確認</button><button class="btn ghost" id="mx">取消</button></div>`);
     document.querySelectorAll("[data-rk]").forEach(b=>b.onclick=()=>{
       const k=b.dataset.rk, d=+b.dataset.d;
-      if(d>0&&left<=0) return; if(d<0&&A[k]<=0) return;
+      if(d>0&&left<=0) return; if(d<0&&A[k]<=(k==="speed"?1:0)) return;
       A[k]+=d; renderModal();
     });
     $("#reOk").onclick=()=>{ closeModal(); act("room",UI.re); };
