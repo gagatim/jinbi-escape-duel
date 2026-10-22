@@ -228,7 +228,7 @@ const ITEMS={
   rope:{n:"繩索",ic:"🪢",sp:true,d:"移動速度+2"},
   dimpocket:{n:"次元口袋",ic:"👝",sp:true,d:"負重無上限"},
   rocket:{n:"火箭筒",ic:"🚀",sp:true,d:"指定對方一個樓層，結算時對方在該樓層扣4血（一次性）"},
-  gasmask:{n:"防毒面具",ic:"😷",sp:true,d:"待在毒氣樓層不扣血"},
+  gasmask:{n:"防毒面具",ic:"😷",sp:true,d:"毒氣傷害-2（最低0），不會消耗"},
   recycle:{n:"回收裝置",ic:"♻️",sp:true,d:"從棄牌堆隨機拿回1張用過的道具（每回合1次）"},
   trash:{n:"垃圾",ic:"🗑️",d:"沒有用途"}
 };
@@ -543,6 +543,8 @@ function keepCards(G,pi,x){
 }
 
 // ---------- 結算 ----------
+// 防毒面具：毒氣傷害-2（最低0）
+function poisonDmg(p,base){ return has(p,"gasmask")?Math.max(0,base-2):base; }
 function fight(G,add){
   const [a,b]=G.players, ap=combatPower(a), bp=combatPower(b), ag=hasGun(a), bg=hasGun(b);
   let da=0, db=0;
@@ -608,10 +610,11 @@ function settle(G){
   const pd=POISON_DMG[r-1];
   living.forEach(p=>{
     if(!G.poison[p.id].includes(p.floor)) return;
-    if(has(p,"gasmask")){ add("😷 你在毒氣層 "+fl(p.floor)+"，防毒面具擋下毒氣",p.id); return; }
-    p.hp-=pd;
-    add("☠️ 你在毒氣層 "+fl(p.floor)+"：-"+pd+"（HP "+p.hp+"）",p.id);
-    add("☠️ "+p.name+" 吸入毒氣：-"+pd+"（HP "+p.hp+"）",opp(p.id));
+    const mask=has(p,"gasmask"), dmg=poisonDmg(p,pd);
+    if(dmg<=0){ add("😷 你在毒氣層 "+fl(p.floor)+"，防毒面具擋下了毒氣（-"+pd+" → 0）",p.id); return; }
+    p.hp-=dmg;
+    add("☠️ 你在毒氣層 "+fl(p.floor)+"：-"+dmg+(mask?"（防毒面具減免2）":"")+"（HP "+p.hp+"）",p.id);
+    add("☠️ "+p.name+" 吸入毒氣：-"+dmg+"（HP "+p.hp+"）",opp(p.id));
   });
   // 5) 飢餓：第2回合起每回合支付1水1糧，每缺一項扣1血
   if(r>=2) living.forEach(p=>{
@@ -779,8 +782,9 @@ function aiPlan(G,pi){
   const opts=[];
   const floorScore=f=>{
     let s=0;
-    if(G.poison[pi].includes(f) && !has(p,"gasmask")) s-=3*POISON_DMG[G.round-1]+2;
-    if(f===G.reveal[pi] && G.revealRound[pi]===G.round-1 && !has(p,"gasmask")) s-=1.5; // 對手可能往我上回合的位置放毒
+    const pdmg=poisonDmg(p,POISON_DMG[G.round-1]);
+    if(G.poison[pi].includes(f) && pdmg>0) s-=3*pdmg+2;
+    if(f===G.reveal[pi] && G.revealRound[pi]===G.round-1) s-=0.75*pdmg; // 對手可能往我上回合的位置放毒
     if(o.alive){
       const edge=hasGun(p)?myP:(myP-oP);
       s+=ow[f]*(edge>0?Math.min(edge,6):edge*1.5)*(p.hp<=4?2:1);
