@@ -384,6 +384,19 @@ input,select{background:rgba(255,255,255,.8);color:var(--text);border:1px solid 
 .floor.pickp:hover{background:rgba(95,190,120,.18);border-color:rgba(60,160,90,.7)}
 .homeBtn{right:62px;font-size:13.5px;font-weight:700;color:var(--text)}
 .homeBtn:hover{border-color:rgba(224,112,58,.5);background:#fff}
+details.fold>summary{cursor:pointer;font-weight:800;font-size:16px;list-style:none;display:flex;align-items:center;gap:6px}
+details.fold>summary::-webkit-details-marker{display:none}
+details.fold>summary::after{content:"▾";margin-left:auto;color:var(--muted);transition:transform .2s}
+details.fold:not([open])>summary::after{transform:rotate(-90deg)}
+details.fold[open]>summary{margin-bottom:8px}
+.timer{font-size:13px;font-weight:800;color:var(--muted);margin-top:2px;min-height:1em}
+.timer.hurry{color:var(--bad);animation:hurry 1s ease-in-out infinite}
+@keyframes hurry{50%{opacity:.45}}
+.tut{position:relative;background:linear-gradient(155deg,rgba(38,131,198,.14),rgba(38,131,198,.05));border:1px solid rgba(38,131,198,.35);border-radius:12px;padding:8px 30px 8px 10px;font-size:13.5px;color:#1d4f73;margin-bottom:8px}
+.tutX{position:absolute;top:4px;right:6px;border:0;background:transparent;color:#5f86a3;font-size:14px}
+.endHead{font-size:30px;font-weight:900;text-align:center;margin:4px 0 6px;letter-spacing:2px}
+.endHead.win{color:#c47a00;text-shadow:0 2px 16px rgba(255,190,60,.5)} .endHead.lose{color:#7a4a6a} .endHead.tie{color:var(--me)}
+.modal .hpTable{margin-top:0}
 /* 抽卡的卡牌維持深色（像實體遊戲卡），在淺色背景上更醒目 */
 .flipCard{--panel:#1f1a17;--panel2:#2a231f;--line:#3d332c;--text:#eee3d6;--ink:#eee3d6;--muted:#a8998a;--cyan:#7fe3f5;color:#eee3d6}
 .flipCard .flipFace{box-shadow:0 8px 20px rgba(80,50,20,.25)}
@@ -481,7 +494,7 @@ function newPlayer(name,id){
 }
 function newGame(names){
   return {v:1,round:0,phase:"setup",players:names.map((n,i)=>newPlayer(n,i)),
-    opts:{dice:true},first:null,dice:null,fog:[],hpHist:[],stock:initialStock(),poison:[[],[]],discard:[],log:[],report:[],reveal:[null,null],revealRound:[0,0],result:null,rand:Math.random};
+    opts:{dice:true},first:null,dice:null,fog:[],hpHist:[],deadline:[0,0],stock:initialStock(),poison:[[],[]],discard:[],log:[],report:[],reveal:[null,null],revealRound:[0,0],result:null,rand:Math.random};
 }
 // ---------- helpers ----------
 const opp=pi=>1-pi;
@@ -559,7 +572,48 @@ function startRound(G){
     }
   });
   if(G.fog.length) log(G,"☁ 黑暗迷霧籠罩 "+G.fog.map(fl).join("、")+"：本回合可以經過，不能停留");
+  setDeadlines(G,"action");
   if(G.dice) log(G,"🎲 擲骰比大小："+G.dice.map(([a,b])=>G.players[0].name+" "+a+" vs "+G.players[1].name+" "+b).join("（同點重擲）→ ")+"，"+G.players[G.first].name+" 先行動");
+}
+// ---------- 回合倒數 ----------
+const ITEMS_SEC=30, REPORT_SEC=45;
+function nowMs(){ return Date.now(); }
+function setDeadlines(G,kind){
+  const sec=(G.opts&&G.opts.turnSec)||0; if(!sec){ G.deadline=[0,0]; return; }
+  const n=nowMs();
+  if(kind==="action"){
+    // 擲骰後手：要等先手結束才能用房間，先給比較寬的時間，先手結束時再重設成完整秒數
+    G.deadline=[0,1].map(pi=>G.first!==null&&G.first!==undefined&&G.first!==pi?n+sec*2000:n+sec*1000);
+  } else G.deadline=[0,1].map(()=>n+(kind==="items"?ITEMS_SEC:REPORT_SEC)*1000);
+}
+function needsAct(G,pi){
+  const p=G.players[pi];
+  if(G.phase==="action") return !p.t.ended;
+  if(G.phase==="items") return !p.t.itemsDone;
+  if(G.phase==="report") return !p.ready;
+  return false;
+}
+// 時間到：替玩家做最保守的收尾
+function autoEnd(G,pi){
+  const p=G.players[pi], t=p.t, A=(a,x)=>{ try{ apply(G,pi,a,x); return true; }catch(e){ return false; } };
+  if(G.phase==="action"){
+    if(t.pending) A("keep",{idx:[]});
+    if(t.poison===null) A("poison",{floor:-1});
+    if(!t.committed) aiSettleFloor(G,pi);
+    aiTrim(G,pi);
+    log(G,"⏱ "+p.name+" 時間到，自動結束回合。");
+    A("endTurn");
+  } else if(G.phase==="items"){
+    log(G,"⏱ "+p.name+" 時間到，自動決定（只在血量歸零時用腎上腺素）。");
+    A("useItems",{adrenaline:p.hp<=0&&has(p,"adrenaline")});
+  } else if(G.phase==="report") A("ready");
+}
+// 房主每秒呼叫；有人逾時就替他收尾，回傳 true 代表狀態有變
+function checkTimeouts(G){
+  if(!(G.opts&&G.opts.turnSec)) return false;
+  let changed=false; const n=nowMs();
+  [0,1].forEach(pi=>{ if(G.deadline[pi] && n>G.deadline[pi] && needsAct(G,pi)){ autoEnd(G,pi); changed=true; } });
+  return changed;
 }
 // 後手在先手結束回合前不能搜索房間／用金條
 // 這層這回合能不能停留（迷霧）
@@ -716,6 +770,8 @@ function apply(G,pi,a,x){
       if(fogBlocked(G,p,p.floor)) fail(fl(p.floor)+" 被黑暗迷霧籠罩，本回合不能停留，請繼續移動");
       if(!t.committed && p.alive){ t.committed=true; p.room=null; }
       t.ended=true;
+      // 擲骰先手結束了：後手從現在起有完整的時間
+      if(G.opts&&G.opts.turnSec && G.first===pi && !G.players[opp(pi)].t.ended) G.deadline[opp(pi)]=nowMs()+G.opts.turnSec*1000;
       if(G.players.every(q=>q.t.ended)) settle(G);
       return;
     }
@@ -876,7 +932,7 @@ function openingEncounter(G){
   recordHP(G,"開局遭遇");
   P.forEach(p=>add("❤️ "+p.name+"："+(p.alive?"HP "+p.hp:"暗影")));
   G.report.forEach(e=>log(G,e.text,e.to));
-  G.phase="report"; P.forEach(p=>{ p.ready=false; });
+  G.phase="report"; setDeadlines(G,"report"); P.forEach(p=>{ p.ready=false; });
 }
 function settle(G){
   const P=G.players, rep=G.report=[], r=G.round;
@@ -935,7 +991,7 @@ function settle(G){
     else add("🍞 "+p.name+" 支付了 "+paid.join("、"));
   });
   // 6) 使用藥片／腎上腺素／酒（雙方各自決定）
-  G.phase="items";
+  G.phase="items"; setDeadlines(G,"items");
   living.forEach(p=>{ p.t.itemsDone=!(has(p,"pill")||has(p,"wine")||(has(p,"adrenaline")&&p.hp<=0)); });
   if(P.every(p=>p.t.itemsDone)) finishSettle(G);
 }
@@ -982,7 +1038,7 @@ function finishSettle(G){
   recordHP(G,"第"+G.round+"回合");
   P.forEach(p=>add("❤️ "+p.name+"："+(p.alive?"HP "+p.hp:"暗影（累積 "+p.drain+"/4）")));
   G.report.forEach(e=>log(G,e.text,e.to));
-  G.phase="report";
+  G.phase="report"; setDeadlines(G,"report");
   P.forEach(p=>{ p.ready=false; });
 }
 function endGame(G){
@@ -1076,13 +1132,16 @@ function aiPickWeighted(G,list){ // list: [[value,weight]]
   for(const [v,w] of list){ r-=Math.max(0,w); if(r<=0) return v; }
   return list.length?list[list.length-1][0]:null;
 }
+// AI 難度：簡單＝亂一點、普通＝原本、困難＝更準（都不偷看）
+function aiLevel(G,pi){ const o=G.opts||{}; return (o.aiLevels&&o.aiLevels[pi])||o.aiLevel||"normal"; }
+const AI_NOISE={easy:6,normal:1.2,hard:0.35}, AI_TRAVEL={easy:0.05,normal:0.12,hard:0.2};
 function aiPoisonPick(G,pi){
   const o=G.players[opp(pi)];
   const cand=[...Array(9).keys()].filter(f=>!G.poison[o.id].includes(f));
   if(!cand.length) return -1;
-  if(!o.alive) return cand[Math.floor(G.rand()*cand.length)];
-  const w=aiOppFloorWeights(G,pi);
-  return aiPickWeighted(G,cand.map(f=>[f,w[f]*w[f]]));
+  if(!o.alive || aiLevel(G,pi)==="easy") return cand[Math.floor(G.rand()*cand.length)];
+  const w=aiOppFloorWeights(G,pi), pw=aiLevel(G,pi)==="hard"?3:2;
+  return aiPickWeighted(G,cand.map(f=>[f,Math.pow(w[f],pw)]));
 }
 function aiPlan(G,pi){
   const p=G.players[pi], o=G.players[opp(pi)], t=p.t, steps=t.steps;
@@ -1102,7 +1161,8 @@ function aiPlan(G,pi){
   // 這回合走不到的好房間（例如缺糧時的 B5 糧倉）：往那邊靠近也有分
   const goals=Object.keys(ROOMS).filter(id=>!ROOMS[id].needTP && Math.abs(ROOMS[id].f-p.floor)>steps)
     .map(id=>({f:ROOMS[id].f,v:aiRoomValue(G,p,id)})).filter(g=>g.v>=5);
-  const travel=f=>goals.reduce((s,g)=>s+g.v*0.12*(Math.abs(p.floor-g.f)-Math.abs(f-g.f)),0);
+  const tr=AI_TRAVEL[aiLevel(G,pi)]||0.12;
+  const travel=f=>goals.reduce((s,g)=>s+g.v*tr*(Math.abs(p.floor-g.f)-Math.abs(f-g.f)),0);
   for(let f=0;f<9;f++){
     if(Math.abs(f-p.floor)>steps) continue;
     if(t.mustMove && f===t.startFloor) continue;
@@ -1114,7 +1174,8 @@ function aiPlan(G,pi){
   const fogged=G.fog||[];
   if(p.tpLeft>0 && Math.abs(p.floor-TELEPORT_FLOOR)+2<=steps && !(t.mustMove && t.startFloor===WAREHOUSE_FLOOR) && !fogged.includes(TELEPORT_FLOOR) && !fogged.includes(WAREHOUSE_FLOOR))
     opts.push({floor:WAREHOUSE_FLOOR,room:"warehouse",tp:true,score:floorScore(WAREHOUSE_FLOOR)+aiRoomValue(G,p,"warehouse")*1.2});
-  opts.forEach(o=>{ o.score+=G.rand()*1.2; });
+  const noise=AI_NOISE[aiLevel(G,pi)]||1.2;
+  opts.forEach(o=>{ o.score+=G.rand()*noise; });
   opts.sort((a,b)=>b.score-a.score);
   return opts[0];
 }
@@ -1280,21 +1341,23 @@ function loadSave(key){
 function hostOnMsg(name){
   return msg=>{
     if(msg.t==="hello"){
-      if(!G) G=newGame([name,msg.name||"玩家2"]);
+      if(!G){ G=newGame([name,msg.name||"玩家2"]); G.opts.turnSec=UI.turnSec||0; }
       netStatus("已連線（房主，房間碼 "+UI.code+"）"); UI.waiting=false; broadcast(); return;
     }
     if(msg.t==="act") doAct(1,msg.a,msg.x);
   };
 }
 function hostLost(){ netStatus("對手已斷線，等待重新連線（房間碼 "+UI.code+"）"); toast("對手已斷線，對手可用同一組房間碼重新加入"); }
-function hostGame(kind,name){
+function hostGame(kind,name,turnSec){
   const code=randCode(); ME=0;
-  UI.code=code; UI.kind=kind; UI.myName=name; UI.waiting=true; UI.connFail=null; render();
+  UI.turnSec=turnSec||0; UI.code=code; UI.kind=kind; UI.myName=name; UI.waiting=true; UI.connFail=null; render();
   NET=makeTransport(kind,code,"host",hostOnMsg(name),()=>{},hostLost);
 }
 function resumeSave(sv){
   G=sv.G; G.rand=Math.random; ME=0; UI.myName=sv.name;
-  if(sv.mode==="ai"){ UI.ai=true; NET={send(){}}; netStatus("對戰 AI"); broadcast(); return; }
+  if(sv.mode==="ai"){ UI.ai=true; NET={send(){}}; netStatus("對戰 AI（"+(LEVEL_NAME[G.opts.aiLevel]||"普通")+"）"); broadcast(); return; }
+  // 重新開房：倒數重新起算，避免一回來就因為舊的期限被判逾時
+  if(G.opts&&G.opts.turnSec && G.deadline) G.deadline=G.deadline.map(d=>d?Date.now()+G.opts.turnSec*1000:0);
   UI.code=sv.code; UI.kind=sv.mode; UI.waiting=false;
   NET=makeTransport(sv.mode,sv.code,"host",hostOnMsg(sv.name),()=>{},hostLost);
   netStatus("等待對手重新連線（房間碼 "+sv.code+"）");
@@ -1307,7 +1370,7 @@ function joinGame(kind,code,name){
   UI.joinTimer=setTimeout(()=>{ if(UI.joining && !G) connFailed("連線逾時：15 秒內沒有連上房間，請確認房間碼，或請房主先建立房間"); },15000);
   try{ localStorage.setItem(GUEST_KEY,JSON.stringify({kind,code,name,t:Date.now()})); }catch(e){}
   NET=makeTransport(kind,code,"guest",msg=>{
-    if(msg.t==="state"){ G=msg.s; UI.joining=false; netStatus("已連線（房間碼 "+code+"）"); render(); }
+    if(msg.t==="state"){ G=msg.s; UI.clockOff=(G.hostNow||Date.now())-Date.now(); UI.joining=false; netStatus("已連線（房間碼 "+code+"）"); render(); }
     if(msg.t==="err") toast(msg.e);
   },()=>{ NET.send({t:"hello",name}); },()=>{ toast("房主已斷線"); showReconnect(); });
 }
@@ -1330,9 +1393,10 @@ function goHome(){
   netStatus(""); closeModal(); render(); window.scrollTo(0,0);
 }
 // 單人對戰 AI：AI 當玩家2，在本機用同一套引擎行動
-function startAI(name){
+const LEVEL_NAME={easy:"簡單",normal:"普通",hard:"困難"};
+function startAI(name,level){
   ME=0; UI.ai=true; UI.myName=name; NET={send(){}};
-  G=newGame([name,"AI"]); netStatus("對戰 AI");
+  G=newGame([name,"AI"]); G.opts.aiLevel=level||"normal"; netStatus("對戰 AI（"+LEVEL_NAME[G.opts.aiLevel]+"）");
   broadcast();
 }
 function scheduleAI(){
@@ -1344,7 +1408,7 @@ function scheduleAI(){
 }
 function broadcast(){
   if(!G) return;
-  const s=JSON.parse(JSON.stringify(G,(k,v)=>k==="rand"?undefined:v));
+  const s=JSON.parse(JSON.stringify(G,(k,v)=>k==="rand"?undefined:v)); s.hostNow=Date.now(); // 讓對方校正時鐘差
   NET&&NET.send({t:"state",s});
   saveGame();
   render();
@@ -1361,6 +1425,41 @@ function act(a,x){
   else NET.send({t:"act",a,x});
 }
 
+// 需要我動作的時刻：行動開始（輪到我）、要選道具、要看報告、遊戲結束
+function myNeedKey(){
+  if(!G) return "";
+  const me=G.players[ME];
+  if(G.phase==="action" && !me.t.ended && !waitingFirst(G,ME)) return "act"+G.round;
+  if(G.phase==="items" && !me.t.itemsDone) return "items"+G.round;
+  if(G.phase==="report" && !me.ready) return "rep"+G.round;
+  if(G.phase==="end") return "end";
+  return "";
+}
+const BASE_TITLE=document.title;
+function notifyIfMyTurn(){
+  const k=myNeedKey();
+  if(k && k!==UI.lastNeed){
+    UI.lastNeed=k;
+    if(!UI.ai || document.hidden) SFX.notify(); // 對戰 AI 時畫面在前景就不吵
+    if(document.hidden && !UI.titleFlash){
+      let on=false;
+      UI.titleFlash=setInterval(()=>{ on=!on; document.title=on?"🔔（輪到你）禁閉逃殺":BASE_TITLE; },900);
+    }
+  } else if(!k) UI.lastNeed="";
+}
+document.addEventListener("visibilitychange",()=>{ if(!document.hidden && UI.titleFlash){ clearInterval(UI.titleFlash); UI.titleFlash=null; document.title=BASE_TITLE; } });
+// 每秒：更新倒數文字；房主順便檢查有沒有人逾時
+setInterval(()=>{
+  if(!G) return;
+  if(ME===0 && !UI.ai && NET && G.phase!=="end" && G.phase!=="setup"){ G.rand=Math.random; if(checkTimeouts(G)) broadcast(); }
+  const el=$("#timer"); if(!el) return;
+  const d=(G.deadline||[])[ME];
+  if(!(G.opts&&G.opts.turnSec) || !d || !needsAct(G,ME)){ el.textContent=""; el.className="timer"; return; }
+  const left=Math.max(0,Math.ceil((d-(Date.now()+(UI.clockOff||0)))/1000));
+  el.textContent="⏱ "+Math.floor(left/60)+":"+String(left%60).padStart(2,"0");
+  el.className="timer"+(left<=15?" hurry":"");
+},1000);
+
 // ---------- 畫面 ----------
 function render(){
   const app=$("#app");
@@ -1370,6 +1469,7 @@ function render(){
   app.innerHTML=gameHTML();
   bindGame();
   renderModal();
+  notifyIfMyTurn();
   const lg=$("#log"); if(lg) lg.scrollTop=lg.scrollHeight;
 }
 function lobbyHTML(){
@@ -1391,13 +1491,15 @@ function lobbyHTML(){
         <option value="local">同電腦兩個分頁（測試用）</option></select></label>
     </div>
     ${resumeHTML()}
-    <div class="panel"><h3>單人對戰 AI</h3><div class="muted" style="font-size:13px">不用連線，直接和電腦對打。</div><button class="btn" id="aiGame">開始對戰 AI</button></div>
-    <div class="panel"><h3>建立房間</h3><button class="btn" id="host">建立房間</button></div>
+    <div class="panel"><h3>單人對戰 AI</h3><div class="muted" style="font-size:13px">不用連線，直接和電腦對打。</div><label class="row" style="font-size:13.5px">難度 <select id="aiLevel"><option value="easy">簡單</option><option value="normal" selected>普通</option><option value="hard">困難</option></select></label><button class="btn" id="aiGame">開始對戰 AI</button></div>
+    <div class="panel"><h3>建立房間</h3>
+      <label class="row" style="font-size:13.5px">每回合限時 <select id="turnSec"><option value="60">60 秒</option><option value="90" selected>90 秒</option><option value="120">120 秒</option><option value="0">不限時</option></select></label>
+      <button class="btn" id="host">建立房間</button></div>
     <div class="panel"><h3>加入房間</h3>
       <div class="row"><input id="code" maxlength="5" placeholder="房間碼" style="text-transform:uppercase;width:140px">
       <button class="btn" id="join">加入</button></div></div>
-    <div class="panel rules">${rulesHTML()}</div>
-    ${notesHTML()}
+    <details class="panel rules fold"><summary>📖 規則摘要</summary>${rulesHTML().replace("<h3>規則摘要</h3>","")}</details>
+    ${notesHTML(false)}
   </div>`;
 }
 function resumeHTML(){
@@ -1426,8 +1528,8 @@ function bindLobby(){
   const jr=$("#joinRetry"); if(jr) jr.onclick=()=>{ try{ NET&&NET.close(); }catch(e){} const g=UI.guest; joinGame(g.kind,g.code,g.name); };
   if(!$("#host")) return; // 等待中／連線中畫面沒有其他按鈕
   const nm=()=>($("#nm").value.trim()||"玩家");
-  $("#host").onclick=()=>hostGame($("#kind").value,nm());
-  $("#aiGame").onclick=()=>startAI(nm());
+  $("#host").onclick=()=>hostGame($("#kind").value,nm(),+$("#turnSec").value);
+  $("#aiGame").onclick=()=>startAI(nm(),$("#aiLevel").value);
   const rs=$("#resume"); if(rs) rs.onclick=()=>resumeSave(loadSave(SAVE_KEY));
   const ds=$("#dropSave"); if(ds) ds.onclick=()=>{ try{ localStorage.removeItem(SAVE_KEY); }catch(e){} render(); };
   const rj=$("#rejoin"); if(rj) rj.onclick=()=>{ const g=loadSave(GUEST_KEY); joinGame(g.kind,g.code,g.name); };
@@ -1475,7 +1577,7 @@ function gameHTML(){
   const me=G.players[ME], op=G.players[1-ME];
   return `<div class="topbar">${pCard(me,"me",true)}
     <div class="roundbox"><div class="rn">${G.round?`第 ${G.round} / 6 回合`:"開局"}</div><div class="ph">${PHASE_NAME[G.phase]||""}</div>
-      <div class="ph">本回合毒氣 -${POISON_DMG[G.round-1]||"-"}</div></div>${pCard(G.phase==="action"&&op.pub?Object.assign({},op,op.pub):op,"opp")}</div>
+      <div class="ph">本回合毒氣 -${POISON_DMG[G.round-1]||"-"}</div><div class="timer" id="timer"></div></div>${pCard(G.phase==="action"&&op.pub?Object.assign({},op,op.pub):op,"opp")}</div>
   <div class="main">
     ${buildingHTML(ME)}
     ${buildingHTML(1-ME)}
@@ -1519,8 +1621,9 @@ function hpTableHTML(){
     <div class="muted" style="font-size:12px;margin-top:6px">每回合結算後的血量（死亡為暗影，顯示累積吸血數）。紅色＝比上一欄少，綠色＝比上一欄多。</div></div>`;
 }
 // 遊戲畫面下方的「特別說明」
-function notesHTML(){
-  return `<div class="panel notes" style="margin-top:12px"><h3>📌 特別說明</h3>
+function notesHTML(open){
+  if(open===undefined) open=true;
+  return `<details class="panel notes fold" style="margin-top:12px" ${open?"open":""}><summary>📌 特別說明</summary>
     <div class="nt"><b>大倉庫怎麼去</b>
       <ol>
         <li>先移動到 <b>B4</b>，停在 B4 時行動欄會出現「🌀 傳送（2步）」。</li>
@@ -1545,7 +1648,7 @@ function notesHTML(){
         <li>被封的樓層<b>可以經過、不能停留</b>，那層的房間本回合都不能用；<b>B4</b> 被封時不能傳送，<b>B5</b> 被封時大倉庫也去不了。</li>
         <li>如果迷霧剛好把你這回合能走到的樓層都封住，那回合可以停在原地，不會被困住。</li>
       </ul></div>
-  </div>`;
+  </details>`;
 }
 // 這回合能不能一路走到 f（每一步都要還能走到可停留的樓層）
 function pathOk(me,f){
@@ -1596,6 +1699,16 @@ function buildingHTML(pi){
   return `<div class="panel bld ${mine?"me":"opp"}"><h3>${mine?"你的大樓":esc(p.name)+" 的大樓"}
     <span class="tag">${mine?"淡綠＝毒氣層；淡黑＝黑霧；亮框＝這回合走得到，點一下就移動":(G.phase==="action"&&!t.ended&&t.poison===null?"👉 點一層樓投毒":"標記＝最後一次看到對手的位置（戰鬥等才會更新）；虛線＝你本回合要放毒的樓層")}</span></h3>${rows}</div>`;
 }
+function tutOff(){ try{ return localStorage.getItem("tutDone")==="1"; }catch(e){ return true; } }
+function tutorialHTML(me){
+  if(tutOff() || G.round>3 || !me.alive) return "";
+  const t=me.t;
+  const tip=t.poison===null?"先<b>投毒</b>：點對手大樓的任一層樓（或下面的樓層按鈕），結算時那層會有毒氣。"
+    :!t.committed?"<b>移動</b>：點你大樓上<b>亮框的樓層</b>，或直接點某個房間，會自動走過去並進入。"
+    :(me.room && !t.roomUsed && ROOMS[me.room].type!=="teleport")?"<b>使用房間</b>：按下面的按鈕搜索（抽卡）或使用房間功能。"
+    :"都做完了就按<b>「結束回合」</b>；走錯了可以按「↩ 回上一步」。";
+  return `<div class="tut">💡 ${tip}<button class="tutX" id="tutOff" title="不再顯示">✕</button></div>`;
+}
 // ① 投毒 → ② 移動 → ③ 進房間 → ④ 結束回合：做完的打勾、目前這步發亮
 function stepperHTML(me){
   const t=me.t;
@@ -1623,7 +1736,7 @@ function actionHTML(){
   const fogNote=(G.fog||[]).length?`<div class="notice fognote" style="margin-bottom:8px">☁ 黑暗迷霧（第 ${G.round}/${FOG_ROUNDS} 回合）：<b>${G.fog.map(fl).join("、")}</b> 可以經過、不能停留${G.fog.includes(TELEPORT_FLOOR)?"；B4 被封，不能傳送":""}${G.fog.includes(WAREHOUSE_FLOOR)?"；B5 被封，大倉庫去不了":""}${t.fogExempt?"<br>（迷霧封住了你能去的樓層，這回合可以停在原地）":""}</div>`:"";
   const diceNote=fogNote+(G.dice?`<div class="notice" style="margin-bottom:8px">🎲 ${G.dice.map(([a,b])=>`${ME===0?"你":esc(G.players[0].name)} ${DICE[a-1]}${a} vs ${ME===1?"你":esc(G.players[1].name)} ${DICE[b-1]}${b}`).join("（同點重擲）→ ")}<br><b>${G.first===ME?"你先行動":esc(op.name)+" 先行動"}</b>${waitingFirst(G,ME)?"：等它結束回合後你才能搜索房間（投毒、移動可以先做）":""}</div>`:"");
   if(t.ended) return `<div class="panel">${stepperHTML(me)}${diceNote}<h3>已結束回合</h3><div class="muted">等待 ${esc(op.name)} 行動…</div></div>`;
-  let h=`<div class="panel">${stepperHTML(me)}${diceNote}<h3>${me.alive?"行動":"暗影行動"}</h3>`;
+  let h=`<div class="panel">${stepperHTML(me)}${tutorialHTML(me)}${diceNote}<h3>${me.alive?"行動":"暗影行動"}</h3>`;
   if(t.poison===null){
     const opts=FLOORS.map((n,f)=>G.poison[1-ME].includes(f)?"":`<button class="btn small ghost" data-poison="${f}">${n}</button>`).join("");
     return h+`<div class="notice">選擇 ${esc(op.name)} 大樓要放毒的樓層（結算時生效）：<b>直接點對手大樓的樓層</b>，或按下面的按鈕</div>
@@ -1687,6 +1800,7 @@ function bindGame(){
   const on=(id,fn)=>{ const e=$("#"+id); if(e) e.onclick=fn; };
   on("stay",()=>act("enter",{room:null}));
   on("undo",()=>act("undo"));
+  on("tutOff",()=>{ try{ localStorage.setItem("tutDone","1"); }catch(e){} render(); });
   on("undoAll",()=>confirmModal("全部退回到這回合能退的最早狀態（共 "+((G.players[ME].t.undo||[]).length)+" 步）？",()=>act("undoAll")));
   on("goldDraw",()=>act("gold",{}));
   on("roomGo",()=>act("room",{}));
@@ -1768,6 +1882,13 @@ const SFX=(()=>{
       [0,0.09].forEach((d,i)=>{ const q=p*(i?0.93:1);
         osc({f0:170*q,f1:70,dur:0.09,type:"sine",peak:0.14*v,delay:d});
         noise({dur:0.07,peak:0.07*v,ftype:"lowpass",f0:1500*q,f1:500,delay:d}); }); },
+    notify(){ if(!ok()) return; osc({f0:880,dur:0.16,type:"sine",peak:0.08}); osc({f0:1320,dur:0.26,type:"sine",peak:0.07,delay:0.12}); },
+    hit(){ if(!ok()) return; noise({dur:0.18,peak:0.22,ftype:"lowpass",f0:2200,f1:300}); osc({f0:150,f1:55,dur:0.22,type:"sine",peak:0.25}); },
+    boom(){ if(!ok()) return; noise({dur:0.6,peak:0.3,ftype:"lowpass",f0:1400,f1:80}); osc({f0:90,f1:35,dur:0.6,type:"sine",peak:0.3}); },
+    poison(){ if(!ok()) return; noise({dur:0.55,peak:0.09,ftype:"bandpass",f0:900,f1:400}); osc({f0:220,f1:180,dur:0.5,type:"triangle",peak:0.05}); },
+    death(){ if(!ok()) return; [0,0.22,0.44].forEach((d,i)=>osc({f0:330/(1+i*0.26),dur:0.4,type:"triangle",peak:0.09,delay:d})); },
+    revive(){ if(!ok()) return; [0,1,2,3].forEach(i=>osc({f0:440*Math.pow(1.26,i),dur:0.22,type:"sine",peak:0.08,delay:i*0.08})); },
+    heal(){ if(!ok()) return; osc({f0:660,f1:990,dur:0.3,type:"sine",peak:0.07}); },
     ring(){ if(!ok()) return; const p=J(1,0.05), v=J(1,0.12);
       osc({f0:660*p,dur:0.38,type:"sine",peak:0.09*v}); osc({f0:990*p,dur:0.48,type:"sine",peak:0.06*v,delay:0.06});
       osc({f0:400,f1:900,dur:0.3,type:"triangle",peak:0.05*v}); }
@@ -1822,6 +1943,7 @@ function renderModal(){
   if(G.phase==="action" && me.flash && me.flash.r===G.round && me.flash.id!==UI.flashSeen) return flashModal(me.flash);
   if(G.phase==="items" && !t.itemsDone) return itemsModal();
   if(G.phase==="report" && !me.ready) return reportModal();
+  if(G.phase==="end" && UI.endSeen!==endKey()) return endModal();
   if(G.phase!=="action"){ closeModal(); return; }
   if(UI.modal==="tp"){
     modal(`<h3>🌀 傳送到哪一層？（花2步）</h3>${floorPicker(f=>f!==me.floor)}
@@ -1939,7 +2061,30 @@ function reportLines(){
     return `<div class="rg"><div class="rgh">${g}</div>${groups[g].map(x=>`<div class="rl ${tone(x)}">${esc(x)}</div>`).join("")}</div>`;
   }).join("");
 }
+// 結算報告第一次打開時，依內容播音效（每份報告只播一次）
+function playReportSounds(){
+  const key="r"+G.round+":"+G.report.length; if(UI.reportSfx===key) return; UI.reportSfx=key;
+  const txt=G.report.filter(e=>e.to===undefined||e.to===null||e.to===ME).map(e=>e.text).join("\n");
+  const q=[];
+  if(/⚔️/.test(txt)) q.push("hit"); if(/🚀.*命中/.test(txt)) q.push("boom"); if(/☠️ 你在毒氣層|吸入毒氣/.test(txt)) q.push("poison");
+  if(/💊|💉/.test(txt)) q.push("heal"); if(/💀/.test(txt)) q.push("death"); if(/✨/.test(txt)) q.push("revive");
+  q.forEach((k,i)=>setTimeout(()=>SFX[k](),i*450));
+}
+function endKey(){ return "end:"+G.log.length; }
+function endModal(){
+  const R0=G.result, w=R0.winner, win=w===ME;
+  modal(`<div class="endHead ${w<0?"tie":win?"win":"lose"}">${w<0?"🤝 平手":win?"🏆 你贏了！":"💀 你輸了…"}</div>
+    <div class="muted" style="text-align:center;margin-bottom:10px">${esc(R0.why)}</div>
+    ${hpTableHTML()}
+    <div class="row" style="justify-content:center;margin-top:14px"><button class="btn" id="endAgain">🔄 再來一局</button>
+      <button class="btn ghost" id="endHome">🏠 回到首頁</button><button class="btn ghost" id="endClose">看看棋盤</button></div>`);
+  if(!UI.endSfx){ UI.endSfx=true; win?SFX.revive():w<0?SFX.notify():SFX.death(); }
+  $("#endAgain").onclick=()=>{ UI.endSeen=endKey(); UI.endSfx=false; act("rematch"); };
+  $("#endHome").onclick=()=>{ UI.endSeen=endKey(); UI.endSfx=false; goHome(); };
+  $("#endClose").onclick=()=>{ UI.endSeen=endKey(); UI.endSfx=false; closeModal(); };
+}
 function reportModal(){
+  playReportSounds();
   modal(`<h3>${G.round?`第 ${G.round} 回合結算`:"開局遭遇"}</h3><div class="report">${reportLines()}</div>
     <div style="margin-top:12px"><button class="btn" id="rOk">${G.round>=ROUNDS?"查看最終結果":G.round?"準備下一回合":"開始第 1 回合"}</button></div>`);
   $("#rOk").onclick=()=>act("ready");
