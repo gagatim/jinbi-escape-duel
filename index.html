@@ -124,7 +124,7 @@ const ITEMS={
   pill:{n:"藥片",ic:"💊",d:"結算時使用：回復2血"},
   adrenaline:{n:"腎上腺素",ic:"💉",d:"結算時使用：本回合血量最低保留1血，避免死亡"},
   wine:{n:"酒",ic:"🍷",d:"結算時使用，擲骰：1丟光道具／2無事／3武力+1／4速度+1／5負重+1／6回2血"},
-  gold:{n:"金條",ic:"🪙",d:"在有庫存的房間花1根多拿1張（每回合1次）；遊戲結束時每根+1血"},
+  gold:{n:"金條",ic:"🪙",d:"在可搜索的房間花1根多抽1張隨機卡（每回合1次）；遊戲結束時每根+1血"},
   knife:{n:"刀",ic:"🔪",w:2,d:"武力+2"},
   knifeX2:{n:"雙刀",ic:"⚔️",w:4,d:"武力+4"},
   pistol:{n:"手槍",ic:"🔫",w:2,gun:true,d:"武力+2；持槍時無視對方武力，直接造成自己全部武力的傷害"},
@@ -165,11 +165,11 @@ function initialStock(){
 }
 function newPlayer(name,id){
   return {id,name,hp:MAXHP,power:0,speed:0,carry:0,ready:false,inv:[],floor:1,room:null,
-    alive:true,drain:0,deathRound:0,deathPower:0,deathCause:"",ghostSpeed:1,tpLeft:2,t:{}};
+    alive:true,drain:0,deathRound:0,deathPower:0,deathCause:"",ghostSpeed:1,tpLeft:2,t:{},mem:{took:{},exact:{}}};
 }
 function newGame(names){
   return {v:1,round:0,phase:"setup",players:names.map((n,i)=>newPlayer(n,i)),
-    stock:initialStock(),poison:[[],[]],discard:[],log:[],report:[],reveal:[null,null],revealRound:[0,0],stockView:null,result:null,rand:Math.random};
+    stock:initialStock(),poison:[[],[]],discard:[],log:[],report:[],reveal:[null,null],revealRound:[0,0],result:null,rand:Math.random};
 }
 // ---------- helpers ----------
 const opp=pi=>1-pi;
@@ -184,13 +184,31 @@ function moveSpeed(p){ return p.speed+(has(p,"rope")?2:0); }
 function stockTotal(s){ return Object.values(s).reduce((a,b)=>a+b,0); }
 // 對手看得到的位置：只有戰鬥、暗影吸血、被火箭筒命中、死亡時才更新
 function reveal(G,p){ G.reveal[p.id]=p.floor; G.revealRound[p.id]=G.round; }
-// 玩家看到的庫存：回合開始時的快照，扣掉自己這回合拿走的（避免從即時庫存變化推測對手位置）
-function stockSeen(G,pi,room){
-  const base=(G.stockView||G.stock)[room]||{}, took=((G.players[pi].t||{}).took||{})[room]||{}, out={};
-  Object.keys(base).forEach(k=>{ out[k]=Math.max(0,base[k]-(took[k]||0)); });
+// 房間庫存對玩家與 AI 都是未知的。每位玩家只記得：自己拿走過什麼、親眼看到房間被翻空時剩下什麼。
+// AI 用這份記憶加上開局配置（規則公開）來推測庫存，見 stockGuess。
+function memOf(p){ return p.mem||(p.mem={took:{},exact:{}}); }
+function noteTook(p,room,it){ const m=memOf(p).took; const r=m[room]||(m[room]={}); r[it]=(r[it]||0)+1; }
+function deathCount(G){ return G.players.filter(q=>q.deathRound>0).length; }
+function noteExact(G,p,room,cards){ const o={}; cards.forEach(c=>{ o[c]=(o[c]||0)+1; }); memOf(p).exact[room]={s:o,r:G.round,d:deathCount(G)}; }
+function stockGuess(G,p,room){
+  const m=memOf(p), ex=m.exact[room], out={};
+  const addTo=(o,k,n)=>{ o[k]=(o[k]||0)+n; };
+  if(room==="heli"){ // 空投時程是公開的：最後一次看到的內容＋之後的空投
+    const from=ex?ex.r:0;
+    if(ex) Object.keys(ex.s).forEach(k=>addTo(out,k,ex.s[k]));
+    AIRDROP.slice(from,G.round).forEach(k=>addTo(out,k,1));
+    if(!ex) Object.keys(m.took.heli||{}).forEach(k=>{ out[k]=Math.max(0,(out[k]||0)-m.took.heli[k]); });
+    return out;
+  }
+  if(room==="morgue"){
+    if(ex && ex.d===deathCount(G)) return Object.assign({},ex.s);
+    return deathCount(G)?{water:1,food:1,knife:1}:{};
+  }
+  if(ex) return Object.assign({},ex.s);
+  const init=initialStock()[room]||{}, took=m.took[room]||{};
+  Object.keys(init).forEach(k=>{ out[k]=Math.max(0,init[k]-(took[k]||0)); });
   return out;
 }
-function noteTook(p,room,it){ const t=p.t.took||(p.t.took={}); const r=t[room]||(t[room]={}); r[it]=(r[it]||0)+1; }
 function log(G,text,to){ G.log.push({r:G.round,text,to}); }
 function fl(f){ return FLOORS[f]; }
 function fail(msg){ throw new Error(msg); }
@@ -200,11 +218,10 @@ function startRound(G){
   G.round++; G.phase="action"; G.report=[];
   const drop=AIRDROP[G.round-1];
   if(drop){ G.stock.heli[drop]=(G.stock.heli[drop]||0)+1; }
-  G.stockView=JSON.parse(JSON.stringify(G.stock));
   log(G,"── 第 "+G.round+" 回合開始 ── 停機坪空投："+ITEMS[drop].ic+ITEMS[drop].n+"；本回合毒氣傷害 "+POISON_DMG[G.round-1]);
   G.players.forEach(p=>{
     p.t={poison:null,steps:p.alive?moveSpeed(p):p.ghostSpeed,committed:false,roomUsed:false,pending:null,
-      canteen:false,wh:false,recycled:false,goldUsed:false,rockets:[],ctrlAdd:null,ended:false,itemsDone:true,took:{},startFloor:p.floor,mustMove:(p.alive?moveSpeed(p):p.ghostSpeed)>0};
+      canteen:false,wh:false,recycled:false,goldUsed:false,rockets:[],ctrlAdd:null,ended:false,itemsDone:true,startFloor:p.floor,mustMove:(p.alive?moveSpeed(p):p.ghostSpeed)>0};
     p.room=null; p.ready=false;
   });
 }
@@ -297,11 +314,13 @@ function apply(G,pi,a,x){
       if(t.pending) fail("請先處理抽到的卡");
       if(t.goldUsed) fail("金條每回合限用1次");
       if(!has(p,"gold")) fail("你沒有金條");
-      const s=G.stock[p.room], it=x.item;
-      if(!it || it==="gold" || !(s[it]>0)) fail("房間裡沒有這個道具");
+      const s=G.stock[p.room], deck=[];
+      Object.keys(s).forEach(k=>{ if(k!=="gold") for(let i=0;i<s[k];i++) deck.push(k); });
       if(carryCap(p)-(p.inv.length-1)<1) fail("負重不足");
+      if(!deck.length){ noteExact(G,p,p.room,[]); t.goldUsed=true; log(G,"你想用金條在「"+R.n+"」多抽一張，但已經沒有東西了（金條沒有花掉）。",pi); return; }
+      const it=deck[Math.floor(G.rand()*deck.length)];
       takeItem(p,"gold"); G.discard.push("gold"); s[it]--; p.inv.push(it); t.goldUsed=true; noteTook(p,p.room,it);
-      log(G,"你用1根金條從「"+R.n+"」多拿了 "+ITEMS[it].n+"。",pi);
+      log(G,"你用1根金條在「"+R.n+"」多抽到 "+ITEMS[it].n+"。",pi);
       return;
     }
     case "recycle": {
@@ -353,7 +372,11 @@ function roomAction(G,pi,x){
   if(R.draw){
     const s=G.stock[p.room], deck=[];
     Object.keys(s).forEach(k=>{ for(let i=0;i<s[k];i++) deck.push(k); });
-    if(!deck.length) fail("這個房間已經空了");
+    if(!deck.length){
+      t.roomUsed=true; noteExact(G,p,p.room,[]);
+      log(G,"你搜索了「"+R.n+"」，但裡面已經空了。",pi);
+      return;
+    }
     shuffle(deck,G.rand);
     const cards=deck.slice(0,R.draw);
     cards.forEach(c=>s[c]--);
@@ -412,6 +435,8 @@ function keepCards(G,pi,x){
   const s=G.stock[pd.room];
   pd.cards.forEach((c,i)=>{ if(!idx.includes(i)) s[c]=(s[c]||0)+1; });
   kept.forEach(c=>{ p.inv.push(c); noteTook(p,pd.room,c); });
+  // 翻出的張數少於可抽張數 → 房間已被翻光，剩下的就是沒拿的那些
+  if(pd.cards.length<ROOMS[pd.room].draw) noteExact(G,p,pd.room,pd.cards.filter((c,i)=>!idx.includes(i)));
   log(G,"你在「"+ROOMS[pd.room].n+"」"+(kept.length?"拿到："+kept.map(c=>ITEMS[c].n).join("、"):"什麼都沒拿")+"。",pi);
   t.pending=null;
 }
@@ -595,7 +620,7 @@ function aiItemValue(G,p,it,extra){
 function aiRoomValue(G,p,id){
   const R=ROOMS[id];
   if(R.draw){
-    const s=stockSeen(G,p.id,id), deck=[];
+    const s=stockGuess(G,p,id), deck=[];
     Object.keys(s).forEach(k=>{ for(let i=0;i<s[k];i++) deck.push(k); });
     if(!deck.length) return 0;
     const room=has(p,"dimpocket")?99:carryRoom(p);
@@ -737,17 +762,14 @@ function aiStep(G,pi){
   A("enter",{room:plan.room&&ROOMS[plan.room].f===p.floor?plan.room:null});
   if(p.room){
     const R=ROOMS[p.room];
-    if(R.draw){ if(A("room",{})) aiKeep(G,pi); }
+    if(R.draw){ if(A("room",{}) && t.pending) aiKeep(G,pi); }
     else if(R.type==="control"){
       const mine=G.poison[pi].slice().sort((a,b)=>[1,6,4,2].indexOf(b)-[1,6,4,2].indexOf(a));
       if(mine.length) A("room",{mode:"detox",floor:mine[0]});
       else { const w=aiOppFloorWeights(G,pi); const c=[...Array(9).keys()].filter(f=>!G.poison[opp(pi)].includes(f)&&f!==t.poison).sort((a,b)=>w[b]-w[a]); if(c.length) A("room",{mode:"add",floor:c[0]}); }
     }
     else if(R.type==="gene"||R.type==="canteen") A("room",{});
-    if(R.draw && !R.noGold && has(p,"gold") && G.round<ROUNDS){
-      const s=G.stock[p.room], best=Object.keys(s).filter(k=>s[k]>0&&k!=="gold").sort((a,b)=>aiItemValue(G,p,b)-aiItemValue(G,p,a))[0];
-      if(best && aiItemValue(G,p,best)>=5) A("gold",{item:best});
-    }
+    if(R.draw && !R.noGold && has(p,"gold") && G.round<ROUNDS && aiRoomValue(G,p,p.room)>=4) A("gold",{});
   }
   A("endTurn");
   return true;
@@ -890,7 +912,7 @@ function lobbyHTML(){
 }
 function rulesHTML(){
   return `<h3>規則摘要</h3>
-  <div>・開局把 <b>10 點</b> 分給 力量／速度／負重；HP 10。兩人各在自己的大樓（2F～B7），各自秘密選 <b>1F／B1／B2</b> 出發，選到同一層開局就先打一場。房間物資兩棟<b>共用庫存</b>。</div>
+  <div>・開局把 <b>10 點</b> 分給 力量／速度／負重；HP 10。兩人各在自己的大樓（2F～B7），各自秘密選 <b>1F／B1／B2</b> 出發，選到同一層開局就先打一場。房間物資兩棟<b>共用庫存</b>，剩多少<b>看不到</b>，要搜了才知道。</div>
   <div>・每回合：先<b>投毒</b>（選對方大樓一層）→ 用速度步數上下移動（<b>不能停在出發的樓層</b>）→ 停在一個房間使用功能 → 結束回合。</div>
   <div>・對手位置是隱藏的，只有<b>戰鬥</b>、暗影吸血、被火箭筒命中或死亡時才會知道對方在哪一層。</div>
   <div>・結算順序：<b>暗影</b>（死者與活人同樓層：活人-2、暗影+2，累積4復活）→ <b>戰鬥</b>（同樓層比武力，差值為傷害；持槍者無視對方武力直接造成全部武力傷害）→ 火箭筒 → <b>毒氣</b>（各自大樓，傷害 1/2/2/3/3/4）→ <b>飢餓</b>（第2回合起付1水1糧，每缺一項-1）→ 使用藥片／腎上腺素／酒 → 死亡判定。</div>
@@ -974,7 +996,7 @@ function buildingHTML(pi){
         else if(G.phase==="action" && me.alive && !t.ended && !t.committed && t.poison!==null && me.floor===f && (!R.needTP||t.wh) && !(t.mustMove&&f===t.startFloor)) cls+=" click";
         if(R.needTP && !(me.floor===f && t.wh)) cls+=" locked";
       }
-      const s=G.stock[id]?stockSeen(G,ME,id):null, left=s?stockTotal(s):null;
+      const left=null; // 庫存未知，不顯示數量
       return `<span class="${cls}" data-room="${mine?id:""}" title="${esc(R.d)}">${R.n}${left!==null?` <span class="muted">${left}</span>`:""}</span>`;
     }).join("");
     const isP=poisoned.includes(f);
@@ -1018,11 +1040,10 @@ function actionHTML(){
       if(R.type==="control") h+=`<button class="btn small" id="ctrl">使用控制室</button>`;
       else if(R.type==="respec") h+=`<button class="btn small" id="respec">重新分配素質</button>`;
       else if(R.type==="gene") h+=`<button class="btn small" id="roomGo">使用基因庫（-2血）</button>`;
-      else h+=`<button class="btn small" id="roomGo" ${R.draw&&!stockTotal(stockSeen(G,ME,me.room))?"disabled":""}>${R.draw?"搜索房間":"使用"}</button>`;
+      else h+=`<button class="btn small" id="roomGo">${R.draw?"搜索房間":"使用"}</button>`;
     }
     if(R.draw && !R.noGold && has(me,"gold") && !t.goldUsed && !t.pending){
-      const s=G.stock[me.room], ks=Object.keys(s).filter(k=>s[k]>0&&k!=="gold");
-      if(ks.length) h+=`<div class="row" style="margin-top:8px"><span class="muted" style="font-size:13px">🪙 用金條多拿：</span>${ks.map(k=>`<button class="btn small ghost" data-gold="${k}">${ITEMS[k].ic}${ITEMS[k].n}</button>`).join("")}</div>`;
+      h+=`<div class="row" style="margin-top:8px"><button class="btn small ghost" id="goldDraw">🪙 用1根金條多抽1張（隨機）</button></div>`;
     }
   } else h+=`<div class="muted" style="margin:8px 0">停留在 ${fl(me.floor)}，沒有進房間。</div>`;
   h+=`<div style="margin-top:10px"><button class="btn" id="endTurn">結束回合</button></div></div>`;
@@ -1040,13 +1061,14 @@ function bindGame(){
   document.querySelectorAll("[data-poison]").forEach(b=>b.onclick=()=>act("poison",{floor:+b.dataset.poison}));
   document.querySelectorAll("[data-move]").forEach(b=>b.onclick=()=>act("move",{dir:+b.dataset.move}));
   document.querySelectorAll(".room.click").forEach(b=>b.onclick=()=>act("enter",{room:b.dataset.room}));
-  document.querySelectorAll("[data-gold]").forEach(b=>b.onclick=()=>act("gold",{item:b.dataset.gold}));
+
   document.querySelectorAll("[data-drop]").forEach(b=>b.onclick=()=>{
     const it=G.players[ME].inv[+b.dataset.drop];
     confirmModal("確定丟掉 "+ITEMS[it].n+"？",()=>act("drop",{idx:+b.dataset.drop}));
   });
   const on=(id,fn)=>{ const e=$("#"+id); if(e) e.onclick=fn; };
   on("stay",()=>act("enter",{room:null}));
+  on("goldDraw",()=>act("gold",{}));
   on("roomGo",()=>act("room",{}));
   on("endTurn",()=>{
     const me=G.players[ME];
