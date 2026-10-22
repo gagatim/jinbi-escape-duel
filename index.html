@@ -599,6 +599,10 @@ function apply(G,pi,a,x){
   if(a==="useItems") return useItems(G,pi,x);
   if(G.phase!=="action") fail("現在不是行動階段");
   if(t.ended) fail("你已結束本回合");
+  if(a==="undo") return undoStep(G,pi);
+  if(a==="undoAll") return undoStep(G,pi,true);
+  const snap=snapFor(p,a);
+  const res=(()=>{
   switch(a){
     case "poison": {
       if(t.poison!==null) fail("本回合已經投過毒");
@@ -714,6 +718,47 @@ function apply(G,pi,a,x){
     }
   }
   fail("未知動作："+a);
+  })();
+  afterAction(G,p,a,snap,x);
+  return res;
+}
+// ---------- 回上一步 ----------
+// 可以回的：投毒、移動、傳送、進房間、丟道具、火箭筒、基因庫／餐廳／控制室／操作室（都沒有隨機）。
+// 搜索房間、金條多抽、回收裝置有隨機結果：做了就清空紀錄（不然可以一直回上一步重抽）。結束回合後也不能回。
+const UNDOABLE=new Set(["poison","move","teleport","enter","drop","rocket","room"]);
+const UNDO_CLEAR=new Set(["keep","gold","recycle"]);
+function snapFor(p,a){
+  if(UNDO_CLEAR.has(a)) return "clear";
+  if(a==="room" && p.room && ROOMS[p.room].draw) return "clear"; // 搜索＝抽卡
+  if(!UNDOABLE.has(a)) return null;
+  return {p:{floor:p.floor,room:p.room,inv:p.inv.slice(),power:p.power,speed:p.speed,carry:p.carry,hp:p.hp,tpLeft:p.tpLeft},
+    t:JSON.parse(JSON.stringify(p.t,(k,v)=>k==="undo"?undefined:v))};
+}
+function afterAction(G,p,a,snap,x){
+  if(!snap) return;
+  if(snap==="clear"){ p.t.undo=[]; return; }
+  if(x && x.chain) return; // 同一次點擊的後續動作（連走好幾層、走過去再進房間）：跟第一步算同一步
+  if(a==="drop") snap.dropped=G.discard[G.discard.length-1];
+  const st=p.t.undo||(p.t.undo=[]);
+  st.push(snap); if(st.length>40) st.shift();
+}
+// all=true：全部退回（回到最早能退的狀態）
+function undoStep(G,pi,all){
+  const p=G.players[pi], st=p.t.undo||[];
+  if(!st.length) fail("沒有可以回上一步的動作（抽卡、金條、回收之後不能回）");
+  if(all){ // 先把途中丟掉的道具從棄牌堆拿回來，再回到第一筆
+    st.forEach(s=>{ if(s.dropped){ const i=G.discard.lastIndexOf(s.dropped); if(i>=0) G.discard.splice(i,1); } });
+    const first=st[0]; st.length=0;
+    Object.assign(p,first.p); p.inv=first.p.inv.slice();
+    p.t=Object.assign(first.t,{undo:[]});
+    log(G,"⏮ 你全部退回到這回合能退的最早狀態。",pi);
+    return;
+  }
+  const s=st.pop();
+  Object.assign(p,s.p); p.inv=s.p.inv.slice();
+  p.t=Object.assign(s.t,{undo:st});
+  if(s.dropped){ const i=G.discard.lastIndexOf(s.dropped); if(i>=0) G.discard.splice(i,1); }
+  log(G,"↩ 你回到上一步。",pi);
 }
 
 function roomAction(G,pi,x){
@@ -1486,7 +1531,7 @@ function pathOk(me,f){
 }
 function moveTo(f){
   const me=G.players[ME], n=Math.abs(f-me.floor), dir=f<me.floor?-1:1;
-  for(let i=0;i<n;i++) act("move",{dir});
+  for(let i=0;i<n;i++) act("move",i?{dir,chain:true}:{dir}); // 一次點擊＝回上一步的一步
 }
 function buildingHTML(pi){
   const mine=pi===ME, p=G.players[pi], poisoned=G.poison[pi];
@@ -1580,7 +1625,11 @@ function actionHTML(){
       h+=`<div class="row" style="margin-top:8px"><button class="btn small ghost" id="goldDraw">🪙 用1根金條多抽1張（隨機）</button></div>`;
     }
   } else h+=`<div class="muted" style="margin:8px 0">停留在 ${fl(me.floor)}，沒有進房間。</div>`;
-  h+=`<div style="margin-top:10px"><button class="btn" id="endTurn">結束回合</button></div></div>`;
+  const nUndo=(t.undo||[]).length;
+  h+=`<div class="row" style="margin-top:10px"><button class="btn" id="endTurn">結束回合</button>
+    <button class="btn ghost" id="undo" ${nUndo?"":"disabled"} title="快捷鍵 Ctrl+Z">↩ 回上一步${nUndo?`（${nUndo}）`:""}</button>
+    <button class="btn ghost" id="undoAll" ${nUndo>1?"":"disabled"} title="一次退回到這回合能退的最早狀態">⏮ 全部退回</button></div>
+    <div class="muted" style="font-size:11.5px;margin-top:6px">搜索房間、金條多抽、回收裝置之後，之前的步驟就不能再回。</div></div>`;
   return h;
 }
 function itemButtonsHTML(){
@@ -1597,8 +1646,9 @@ function bindGame(){
   document.querySelectorAll(".room.click").forEach(b=>b.onclick=e=>{
     e.stopPropagation();
     const R=ROOMS[b.dataset.room], me=G.players[ME];
-    if(R.f!==me.floor) moveTo(R.f); // 別層的房間：先走過去
-    act("enter",{room:b.dataset.room});
+    const far=R.f!==me.floor;
+    if(far) moveTo(R.f); // 別層的房間：先走過去
+    act("enter",far?{room:b.dataset.room,chain:true}:{room:b.dataset.room});
   });
   document.querySelectorAll(".floor[data-goto]").forEach(b=>b.onclick=()=>moveTo(+b.dataset.goto));
   document.querySelectorAll(".floor[data-poisonf]").forEach(b=>b.onclick=()=>act("poison",{floor:+b.dataset.poisonf}));
@@ -1609,6 +1659,8 @@ function bindGame(){
   });
   const on=(id,fn)=>{ const e=$("#"+id); if(e) e.onclick=fn; };
   on("stay",()=>act("enter",{room:null}));
+  on("undo",()=>act("undo"));
+  on("undoAll",()=>confirmModal("全部退回到這回合能退的最早狀態（共 "+((G.players[ME].t.undo||[]).length)+" 步）？",()=>act("undoAll")));
   on("goldDraw",()=>act("gold",{}));
   on("roomGo",()=>act("room",{}));
   on("endTurn",()=>{
@@ -1866,6 +1918,12 @@ function reportModal(){
   $("#rOk").onclick=()=>act("ready");
 }
 (()=>{ const b=$("#sndBtn"); const upd=()=>{ b.textContent=SFX.isMuted()?"🔇":"🔊"; }; upd(); b.onclick=()=>{ SFX.setMuted(!SFX.isMuted()); upd(); }; })();
+// Ctrl+Z：回上一步（輸入框裡不攔截）
+document.addEventListener("keydown",e=>{
+  if((e.ctrlKey||e.metaKey) && e.key.toLowerCase()==="z" && !/INPUT|SELECT|TEXTAREA/.test((e.target||{}).tagName||"")){
+    if(G && G.phase==="action" && ((G.players[ME].t.undo||[]).length)){ e.preventDefault(); act("undo"); }
+  }
+});
 render();
 </script>
 </body>
