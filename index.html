@@ -319,8 +319,10 @@ function startRound(G){
   log(G,"── 第 "+G.round+" 回合開始 ── 停機坪空投："+ITEMS[drop].ic+ITEMS[drop].n+"；本回合毒氣傷害 "+POISON_DMG[G.round-1]);
   G.players.forEach(p=>{
     p.t={poison:null,steps:p.alive?moveSpeed(p):p.ghostSpeed,committed:false,roomUsed:false,pending:null,
-      canteen:false,wh:false,recycled:false,goldUsed:false,rockets:[],ctrlAdd:null,ended:false,itemsDone:true,startFloor:p.floor,mustMove:(p.alive?moveSpeed(p):p.ghostSpeed)>0};
+      canteen:false,wh:false,recycled:false,goldUsed:false,rockets:[],ctrlAdd:null,ctrlDetox:null,ended:false,itemsDone:true,startFloor:p.floor,mustMove:(p.alive?moveSpeed(p):p.ghostSpeed)>0};
     p.room=null; p.ready=false;
+    // 行動階段對手看到的血量／素質：回合開始時的快照（避免從即時變化推測位置，例如基因庫扣血）
+    p.pub={hp:p.hp,power:p.power,speed:p.speed,carry:p.carry,alive:p.alive,drain:p.drain};
   });
 }
 
@@ -448,6 +450,7 @@ function apply(G,pi,a,x){
       if(!p.alive) fail("暗影沒有道具");
       const i=x.idx|0;
       if(i<0||i>=p.inv.length) fail("道具不存在");
+      if(p.inv[i]==="dimpocket" && p.inv.length-1>p.carry) fail("丟掉次元口袋後會超過負重（"+p.carry+"），請先丟掉其他道具");
       const it=p.inv.splice(i,1)[0]; G.discard.push(it);
       log(G,"你丟掉了 "+ITEMS[it].n+"。",pi);
       return;
@@ -497,10 +500,9 @@ function roomAction(G,pi,x){
   if(R.type==="control"){
     const f=x.floor|0;
     if(x.mode==="detox"){
-      const list=G.poison[pi], i=list.indexOf(f);
-      if(i<0) fail("你的大樓那層沒有毒氣");
-      list.splice(i,1); t.roomUsed=true;
-      log(G,"你在控制室解除了自己大樓 "+fl(f)+" 的毒氣。",pi);
+      if(!G.poison[pi].includes(f)) fail("你的大樓那層沒有毒氣");
+      t.ctrlDetox=f; t.roomUsed=true; // 結算時才生效，避免對手從毒層即時消失推測你在控制室
+      log(G,"你在控制室解除自己大樓 "+fl(f)+" 的毒氣（結算時生效，本回合就不會在那層受毒）。",pi);
       return;
     }
     if(x.mode==="add"){
@@ -601,7 +603,11 @@ function settle(G){
       else add("🚀 "+p.name+" 的火箭筒轟炸 "+v.name+" 大樓 "+fl(f)+"，沒有命中。");
     });
   });
-  // 4) 毒氣：本回合新毒層加入，各自大樓各自計算
+  // 4) 毒氣：先處理控制室解毒，再加入本回合新毒層，各自大樓各自計算
+  P.forEach(p=>{
+    const f=p.t.ctrlDetox, list=G.poison[p.id];
+    if(f!==undefined && f!==null && list.includes(f)){ list.splice(list.indexOf(f),1); add("🧪 你在控制室解除了自己大樓 "+fl(f)+" 的毒氣",p.id); }
+  });
   P.forEach(p=>{
     const target=G.poison[opp(p.id)], added=[];
     [p.t.poison,p.t.ctrlAdd].forEach(f=>{ if(f!==null && f>=0 && !target.includes(f)){ target.push(f); added.push(fl(f)); } });
@@ -1073,7 +1079,7 @@ function gameHTML(){
   const me=G.players[ME], op=G.players[1-ME];
   return `<div class="topbar">${pCard(me,"me",true)}
     <div class="roundbox"><div class="rn">${G.round?`第 ${G.round} / 6 回合`:"開局"}</div><div class="ph">${PHASE_NAME[G.phase]||""}</div>
-      <div class="ph">本回合毒氣 -${POISON_DMG[G.round-1]||"-"}</div></div>${pCard(op,"opp")}</div>
+      <div class="ph">本回合毒氣 -${POISON_DMG[G.round-1]||"-"}</div></div>${pCard(G.phase==="action"&&op.pub?Object.assign({},op,op.pub):op,"opp")}</div>
   <div class="main">
     ${buildingHTML(ME)}
     ${buildingHTML(1-ME)}
